@@ -4,21 +4,18 @@ Usage:
     python research_benchmark.py
 
 Outputs RESEARCH_RESULTS.csv. The default run uses the repository dictionary,
-plus deterministic random-string and structured-identifier controls. A small
-sample is used for the synthetic controls so the experiment remains practical
-in CI; the sample size is recorded in the output.
+plus deterministic random-string and structured-identifier controls.
 """
 
 from __future__ import annotations
 
 import csv
-import statistics
 from pathlib import Path
 
-from hpss_hash import SELECTION_STRATEGIES
 from research_experiments import (
     allocation_ablation,
     collision_group_distribution,
+    collision_stats,
     generate_random_strings,
     generate_structured_identifiers,
     length_buckets,
@@ -28,7 +25,10 @@ from research_experiments import (
 ROOT = Path(__file__).resolve().parent
 DICTIONARY = ROOT / "dictionaries" / "words.txt"
 OUTPUT = ROOT / "RESEARCH_RESULTS.csv"
-K_VALUES = tuple(range(2, 21))
+# Full allocation ablation is evaluated at these representative budgets on the
+# large dictionary. Synthetic controls cover the complete 2..20 range.
+DICTIONARY_K_VALUES = (2, 3, 4, 5, 6, 8, 10, 12, 16, 20)
+SYNTHETIC_K_VALUES = tuple(range(2, 21))
 SYNTHETIC_COUNT = 50_000
 
 
@@ -40,9 +40,8 @@ def load_words(path: Path = DICTIONARY) -> list[str]:
 def add_selector_rows(rows: list[dict], dataset: str, words: list[str], k: int) -> None:
     representations = strategy_representations(words, k)
     for strategy, values in representations.items():
-        counts = collision_group_distribution(values)
-        stats = allocation_ablation(words, k)[k // 2] if strategy == "HPSS" else None
-        unique = len(set(values))
+        stats = collision_stats(values)
+        groups = collision_group_distribution(values)
         rows.append({
             "experiment": "selector",
             "dataset": dataset,
@@ -51,11 +50,13 @@ def add_selector_rows(rows: list[dict], dataset: str, words: list[str], k: int) 
             "front": k // 2 if strategy == "HPSS" else "",
             "back": k - k // 2 if strategy == "HPSS" else "",
             "records": len(words),
-            "unique": unique,
-            "collision_entries": len(words) - unique,
-            "max_group": max([len([x for x in values if x == rep]) for rep in set(values)] or [0]),
-            "collision_groups": sum(counts.values()),
-            "notes": "balanced HPSS allocation" if stats is not None else "",
+            "unique": stats["unique"],
+            "collision_entries": stats["collision_entries"],
+            "collision_rate": stats["collision_rate"],
+            "collision_pairs": stats["collision_pairs"],
+            "max_group": stats["max_group"],
+            "collision_groups": sum(groups.values()),
+            "notes": "balanced HPSS allocation" if strategy == "HPSS" else "",
         })
 
 
@@ -71,6 +72,8 @@ def add_allocation_rows(rows: list[dict], dataset: str, words: list[str], k: int
             "records": len(words),
             "unique": result.unique,
             "collision_entries": result.collision_entries,
+            "collision_rate": result.collision_entries / len(words) if words else 0.0,
+            "collision_pairs": result.collision_pairs,
             "max_group": result.max_group,
             "collision_groups": "",
             "notes": "all front/back allocations",
@@ -83,7 +86,7 @@ def add_length_rows(rows: list[dict], dataset: str, words: list[str], k: int) ->
             continue
         reps = strategy_representations(bucket_words, k)
         for strategy, values in reps.items():
-            unique = len(set(values))
+            stats = collision_stats(values)
             rows.append({
                 "experiment": "length",
                 "dataset": dataset,
@@ -92,9 +95,11 @@ def add_length_rows(rows: list[dict], dataset: str, words: list[str], k: int) ->
                 "front": "",
                 "back": "",
                 "records": len(bucket_words),
-                "unique": unique,
-                "collision_entries": len(bucket_words) - unique,
-                "max_group": max((values.count(value) for value in set(values)), default=0),
+                "unique": stats["unique"],
+                "collision_entries": stats["collision_entries"],
+                "collision_rate": stats["collision_rate"],
+                "collision_pairs": stats["collision_pairs"],
+                "max_group": stats["max_group"],
                 "collision_groups": "",
                 "notes": f"length_bucket={bucket}",
             })
@@ -102,27 +107,25 @@ def add_length_rows(rows: list[dict], dataset: str, words: list[str], k: int) ->
 
 def main() -> None:
     datasets = {
-        "english-word": load_words(),
-        "random-alphanumeric": generate_random_strings(SYNTHETIC_COUNT),
-        "structured-identifier": generate_structured_identifiers(SYNTHETIC_COUNT),
+        "english-word": (load_words(), DICTIONARY_K_VALUES),
+        "random-alphanumeric": (generate_random_strings(SYNTHETIC_COUNT), SYNTHETIC_K_VALUES),
+        "structured-identifier": (generate_structured_identifiers(SYNTHETIC_COUNT), SYNTHETIC_K_VALUES),
     }
     rows: list[dict] = []
 
-    for dataset, words in datasets.items():
-        # Allocation ablation is the key research experiment. Use every k on
-        # synthetic controls and a representative range on the large dictionary.
-        for k in K_VALUES:
+    for dataset, (words, k_values) in datasets.items():
+        for k in k_values:
             add_allocation_rows(rows, dataset, words, k)
             add_selector_rows(rows, dataset, words, k)
 
-        # Length-stratified analysis is most useful on the natural-language data.
         if dataset == "english-word":
             for k in (4, 8, 12, 16, 20):
                 add_length_rows(rows, dataset, words, k)
 
     fieldnames = [
         "experiment", "dataset", "k", "strategy", "front", "back", "records",
-        "unique", "collision_entries", "max_group", "collision_groups", "notes",
+        "unique", "collision_entries", "collision_rate", "collision_pairs",
+        "max_group", "collision_groups", "notes",
     ]
     with OUTPUT.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -131,7 +134,6 @@ def main() -> None:
 
     print(f"Wrote {OUTPUT} with {len(rows):,} rows")
     print("Datasets:", ", ".join(datasets))
-    print("k values:", K_VALUES)
     print("Synthetic controls:", SYNTHETIC_COUNT, "records each")
 
 
