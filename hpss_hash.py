@@ -3,218 +3,292 @@
 HPSS — Hybrid Prefix-Suffix Selection hashing
 ======================================================================
 
-This module is the CLEANED-UP, FINAL version of the research carried
-out across stage3 -> stage5 of the original experiment log (see
-RESEARCH_LOG.md). It fixes every bug that was found along the way and
-keeps only the parts of the idea that actually held up under testing.
+HPSS selects a small number of characters from a key before encoding.
 
---------------------------------------------------------------------
-THE IDEA
---------------------------------------------------------------------
-Hashing a whole word costs O(len(word)). Most of the discriminating
-information in an English word is concentrated near the start and
-end of the word (prefixes and suffixes carry most of the entropy;
-English words share a LOT of middle substrings — "-tion", "-ing",
-"-ology", etc). So instead of hashing every character, HPSS *selects*
-a small, fixed-size subset of characters (by default: first k/2 +
-last k/2), and only hashes that subset.
+The default selection strategy is:
 
-This trades a small amount of accuracy (more "representation
-collisions" because two words can share the same first/last
-characters) for a large amount of speed (fewer characters to touch
-per word), which matters for very large dictionaries or streaming
-input.
+    first k/2 characters + last k/2 characters
 
---------------------------------------------------------------------
-BUGS FOUND AND FIXED DURING THE RESEARCH
---------------------------------------------------------------------
+The positional encoder is collision-free for distinct character
+sequences because every Unicode code point is mapped to a positive
+digit:
 
-BUG 1 — a=0 encoding (stage3 / stage4, fixed in stage4b)
-    The first positional encoder mapped 'a' -> 0. Under a plain
-    base-26 Horner scheme (h = h*26 + value), a leading 'a' (value 0)
-    contributes NOTHING to the hash. That means:
+    digit(c) = ord(c) + 1
 
-        hash("b")  == hash("ab") == hash("aab") == ...
+and the encoding uses base:
 
-    FIX: shift the alphabet so 'a' -> 1, 'b' -> 2, ..., 'z' -> 26.
-    This turns the encoder into a *bijective base-26 numeral system*
-    (the same scheme spreadsheets use for column names: A, B, ...,
-    Z, AA, AB, ...). Bijective base-k numerations are a well known,
-    provably injective mapping from arbitrary-length digit strings
-    to the natural numbers (Smullyan 1961; Böhm 1964) — i.e. for a
-    fixed, closed alphabet, NO two different strings can ever produce
-    the same integer, regardless of length.
+    UNICODE_BASE = 0x110000 = 1,114,112
 
-BUG 2 — out-of-alphabet characters (found while cleaning up this
-    project; NOT caught in the original stage3-5 experiments)
-    The bijective-base-26 injectivity guarantee only holds if every
-    character actually maps to a digit in [1, 26]. The CS50 "large"
-    dictionary was assumed to be pure a-z, but it is not:
+Thus:
 
-        >>> "'" in open("dictionaries/large").read()
-        True
+    1 <= digit(c) <= UNICODE_BASE
 
-    8,611 of 143,091 entries (~6%) contain an apostrophe
-    ("don't", "abbott's", "y'all", ...). The old encoder computed
-    ord("'") - ord("a") + 1 = -57, a NEGATIVE "digit". A negative
-    digit breaks the bijective-numeral guarantee (it reintroduces the
-    "carry" ambiguity the a=1 fix was designed to remove), and it
-    produced 50 genuine hash collisions between different
-    representations that should *not* have collided
-    (e.g. "conseous" from both "consanguineous" and "consentaneous"
-    under HPSS k=8 — see RESEARCH_LOG.md for the full derivation).
-
-    FIX (this file): the alphabet is explicit and closed
-    (ALPHABET below). Any character outside of it is treated through
-    a documented, deterministic fallback instead of silently going
-    negative. Default alphabet is a-z plus apostrophe (27 symbols),
-    which is exactly what CS50's "large" dictionary needs. Swap in
-    a different ALPHABET for other corpora.
-
---------------------------------------------------------------------
-WHAT THIS MODULE IS -- AND ISN'T
---------------------------------------------------------------------
-- It IS a fast, exact, order-preserving encoder for short character
-  selections drawn from a small closed alphabet. Two different
-  selections never collide (see test_no_collisions.py).
-- It is NOT a fixed-width hash. Output grows with the number of
-  selected characters (though for realistic k this stays well inside
-  64 bits — see RESEARCH_LOG.md for the numeric bound). Reduce with
-  `% table_size` (ideally a prime table size) before using as a
-  hash-table index, same as any other hash.
-- It is NOT a cryptographic hash and NOT a general drop-in replacement
-  for FNV-1a / MurmurHash3 / xxHash on arbitrary binary data. It is a
-  purpose-built encoder for a small, known alphabet (English words,
-  identifiers, etc).
-- Its real, measured advantage is TOUCHING FEWER BYTES PER KEY, not
-  better statistical mixing. See RESULTS.md: at equal k, established
-  hash functions applied to the *same* HPSS-selected characters
-  produce equal-or-slightly-better collision rates than the pure
-  positional encoder, because the positional encoder is a *direct
-  numeral encoding*, not a mixing function. Its virtue is that it is
-  injective for a closed alphabet and can be computed with fewer
-  operations per character than FNV/Murmur/xxHash's finalization
-  steps -- not that it beats them at randomness.
+This avoids the historical a=0 and negative-digit bugs while allowing
+letters, numbers, punctuation, symbols, and Unicode characters.
 """
 
 from __future__ import annotations
 
-import string
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable
+
 
 # ======================================================================
-# ALPHABET
+# UNICODE CHARACTER ENCODING
 # ======================================================================
-# Closed, ordered alphabet. Position in this string IS the digit value
-# minus 1 (so the first symbol maps to digit 1, per bijective base-k).
-# Default covers CS50's "large" dictionary: lowercase letters + the
-# apostrophe used in contractions/possessives ("don't", "cook's").
-# For a pure a-z corpus, use ALPHABET_PLAIN instead.
 
-ALPHABET_PLAIN = string.ascii_lowercase                 # 26 symbols
-ALPHABET_CS50 = string.ascii_lowercase + "'"             # 27 symbols
+# Unicode code points are in the range:
+#
+#     0 .. 0x10FFFF
+#
+# Therefore there are exactly:
+#
+#     0x110000 = 1,114,112
+#
+# possible code points.
 
-DEFAULT_ALPHABET = ALPHABET_CS50
+UNICODE_BASE = 0x110000
 
 
 class UnsupportedCharacterError(ValueError):
-    """Raised when a character outside the configured alphabet is hashed."""
+    """Kept for API compatibility.
+
+    The default Unicode encoder accepts every valid Python Unicode
+    character, so this exception normally isn't raised.
+    """
+    pass
 
 
 def make_digit_table(alphabet: str) -> dict[str, int]:
-    """digit(char) in [1, len(alphabet)] -- bijective base-len(alphabet)."""
+    """
+    Build a positive digit mapping for an explicit alphabet.
+
+    This function is retained for compatibility with the earlier
+    closed-alphabet implementation.
+
+    Characters receive digits:
+
+        first character  -> 1
+        second character -> 2
+        ...
+
+    The alphabet must not contain duplicate characters.
+    """
+
+    if len(set(alphabet)) != len(alphabet):
+        raise ValueError("alphabet contains duplicate characters")
+
     return {ch: i + 1 for i, ch in enumerate(alphabet)}
 
 
-# ======================================================================
-# CORE HPSS POSITIONAL ENCODER  (bug-fixed, closed-alphabet version)
-# ======================================================================
-
 def hpss_positional_hash(
     text: str,
-    alphabet: str = DEFAULT_ALPHABET,
+    alphabet: str | None = None,
     *,
     on_unknown: str = "raise",
 ) -> int:
     """
-    Bijective base-N positional encoding of `text`.
+    Collision-free positional encoding of a Unicode string.
+
+    DEFAULT MODE
+    ------------
+
+    If alphabet=None, every Unicode character is encoded directly:
+
+        digit(c) = ord(c) + 1
+
+    and:
+
+        base = 1,114,112
+
+    Encoding:
 
         h = 0
         for ch in text:
-            h = h * N + digit(ch)          # digit in [1, N]
+            h = h * UNICODE_BASE + (ord(ch) + 1)
 
-    Provably collision-free for any two different strings drawn from
-    `alphabet` (any length, any content) -- see module docstring.
+    Since every digit is in:
 
-    on_unknown:
-        "raise"  -- raise UnsupportedCharacterError (default, safest)
-        "skip"   -- silently drop characters outside the alphabet
-                    (this is what the ORIGINAL buggy code effectively
-                    did via str.encode("ascii", errors="ignore") plus
-                    an unchecked digit formula -- kept here only for
-                    backward comparison, not recommended)
+        [1, UNICODE_BASE]
 
-    NOTE ON PERFORMANCE: this convenience function rebuilds the digit
-    lookup table on every call, which is fine for one-off use but
-    unfair in a tight hashing loop. For benchmarking or hashing many
-    words, build a `CompiledEncoder` once and reuse it (see below) --
-    the original stage3-5 scripts made exactly this mistake, which
-    understated the encoder's real speed.
+    distinct strings have distinct encodings.
+
+    This supports:
+
+        letters
+        digits
+        punctuation
+        symbols
+        Unicode characters
+
+    Examples:
+
+        'a'
+        '2'
+        "'"
+        '-'
+        '_'
+        '@'
+        '#'
+        'é'
+        '中'
+
+    all work without requiring an alphabet update.
+
+    ------------------------------------------------------------------
+    OPTIONAL CLOSED ALPHABET MODE
+    ------------------------------------------------------------------
+
+    If alphabet is supplied, the historical explicit-alphabet mode
+    remains available.
+
+    Example:
+
+        hpss_positional_hash("hello", "abcdefghijklmnopqrstuvwxyz")
+
+    In this mode every character must occur in the supplied alphabet.
+
+    `on_unknown`:
+
+        "raise" -> raise UnsupportedCharacterError
+        "skip"  -> ignore characters outside the alphabet
+
+    The default "raise" behavior is recommended.
     """
+
+    # --------------------------------------------------------------
+    # GENERAL UNICODE MODE
+    # --------------------------------------------------------------
+
+    if alphabet is None:
+        h = 0
+
+        for ch in text:
+            digit = ord(ch) + 1
+            h = h * UNICODE_BASE + digit
+
+        return h
+
+    # --------------------------------------------------------------
+    # EXPLICIT CLOSED-ALPHABET MODE
+    # --------------------------------------------------------------
+
     digits = make_digit_table(alphabet)
     n = len(alphabet)
+
     h = 0
+
     for ch in text:
         d = digits.get(ch)
+
         if d is None:
             if on_unknown == "skip":
                 continue
+
             raise UnsupportedCharacterError(
                 f"character {ch!r} is not in the configured alphabet "
                 f"({alphabet!r}); pass a wider `alphabet=` or "
-                f"on_unknown='skip'"
+                f"use the default Unicode mode"
             )
+
         h = h * n + d
+
     return h
 
 
+# ======================================================================
+# COMPILED ENCODER
+# ======================================================================
+
 @dataclass(frozen=True)
 class CompiledEncoder:
-    """Same encoding as `hpss_positional_hash`, with the digit table
-    built exactly once. Use this in any performance-sensitive loop.
+    """
+    High-performance reusable positional encoder.
+
+    With alphabet=None, uses the Unicode code-point encoder directly.
+    This is the recommended mode for the research benchmark because
+    it supports arbitrary letters, numbers, punctuation and symbols
+    without rebuilding a lookup table.
     """
 
-    alphabet: str = DEFAULT_ALPHABET
+    alphabet: str | None = None
     on_unknown: str = "raise"
 
     def __post_init__(self):
-        object.__setattr__(self, "_digits", make_digit_table(self.alphabet))
-        object.__setattr__(self, "_n", len(self.alphabet))
+
+        if self.alphabet is not None:
+            object.__setattr__(
+                self,
+                "_digits",
+                make_digit_table(self.alphabet),
+            )
+
+            object.__setattr__(
+                self,
+                "_base",
+                len(self.alphabet),
+            )
+
+        else:
+            object.__setattr__(
+                self,
+                "_digits",
+                None,
+            )
+
+            object.__setattr__(
+                self,
+                "_base",
+                UNICODE_BASE,
+            )
 
     def __call__(self, text: str) -> int:
+
+        # ----------------------------------------------------------
+        # GENERAL UNICODE MODE
+        # ----------------------------------------------------------
+
+        if self.alphabet is None:
+
+            base = UNICODE_BASE
+            h = 0
+
+            for ch in text:
+                h = h * base + ord(ch) + 1
+
+            return h
+
+        # ----------------------------------------------------------
+        # CLOSED ALPHABET MODE
+        # ----------------------------------------------------------
+
         digits = self._digits
-        n = self._n
+        base = self._base
+
         h = 0
+
         for ch in text:
+
             d = digits.get(ch)
+
             if d is None:
+
                 if self.on_unknown == "skip":
                     continue
+
                 raise UnsupportedCharacterError(
                     f"character {ch!r} is not in the configured alphabet "
                     f"({self.alphabet!r})"
                 )
-            h = h * n + d
+
+            h = h * base + d
+
         return h
 
 
 # ======================================================================
 # SELECTION STRATEGIES
 # ======================================================================
-# A selection strategy reduces a word to <= k characters *before*
-# hashing. This is the actual novel/tunable part of the design; the
-# encoder above is deliberately dumb and exact.
 
 def select_prefix(word: str, k: int) -> str:
     return word[:k]
@@ -225,23 +299,36 @@ def select_suffix(word: str, k: int) -> str:
 
 
 def select_hpss(word: str, k: int) -> str:
-    """Hybrid Prefix-Suffix Selection: first k/2 chars + last k/2 chars.
-
-    Falls back to a plain prefix for odd k (can't split evenly) and
-    for words no longer than k (nothing to save).
     """
+    Hybrid Prefix-Suffix Selection.
+
+    For even k:
+
+        first k/2 + last k/2
+
+    For odd k, falls back to the prefix.
+
+    Words shorter than or equal to k are returned unchanged.
+    """
+
     if len(word) <= k:
         return word
+
     if k % 2 == 1:
         return word[:k]
+
     half = k // 2
+
     return word[:half] + word[-half:]
 
 
 def select_middle(word: str, k: int) -> str:
+
     if len(word) <= k:
         return word
+
     start = (len(word) - k) // 2
+
     return word[start:start + k]
 
 
@@ -254,44 +341,57 @@ SELECTION_STRATEGIES: dict[str, Callable[[str, int], str]] = {
 
 
 # ======================================================================
-# REFERENCE / COMPARISON HASH FUNCTIONS
+# REFERENCE HASH FUNCTIONS
 # ======================================================================
-# These are the established, well-studied hash functions HPSS is
-# benchmarked against. All three take `bytes` and return a 64-bit
-# unsigned integer.
 
 MASK64 = (1 << 64) - 1
 
 
 def hash_fnv1a64(data: bytes) -> int:
+
     h = 14695981039346656037
     prime = 1099511628211
+
     for byte in data:
         h ^= byte
         h = (h * prime) & MASK64
+
     return h
 
 
 def hash_murmur3_64(data: bytes) -> int:
+
     try:
         import mmh3
+
     except ImportError as exc:
+
         raise RuntimeError(
             "mmh3 is not installed. Install with:\n"
-            "    python3 -m pip install mmh3"
+            "    python3.11 -m pip install mmh3"
         ) from exc
-    value, _ = mmh3.hash64(data, seed=0, signed=False)
+
+    value, _ = mmh3.hash64(
+        data,
+        seed=0,
+        signed=False,
+    )
+
     return value
 
 
 def hash_xxhash64(data: bytes) -> int:
+
     try:
         import xxhash
+
     except ImportError as exc:
+
         raise RuntimeError(
             "xxhash is not installed. Install with:\n"
-            "    python3 -m pip install xxhash"
+            "    python3.11 -m pip install xxhash"
         ) from exc
+
     return xxhash.xxh64(data).intdigest()
 
 
@@ -303,41 +403,75 @@ REFERENCE_HASHES: dict[str, Callable[[bytes], int]] = {
 
 
 # ======================================================================
-# CONVENIENCE: full pipeline
+# FULL HPSS PIPELINE
 # ======================================================================
 
 @dataclass(frozen=True)
 class HPSSHasher:
-    """Bundles a selection strategy + the corrected positional encoder."""
 
     k: int = 8
     strategy: str = "HPSS"
-    alphabet: str = DEFAULT_ALPHABET
+    alphabet: str | None = None
 
     def __call__(self, word: str) -> int:
+
         selector = SELECTION_STRATEGIES[self.strategy]
-        rep = selector(word.lower(), self.k)
-        return hpss_positional_hash(rep, self.alphabet)
 
-    def table_index(self, word: str, table_size: int) -> int:
-        """Reduce the (unbounded) HPSS value to a table slot.
+        rep = selector(
+            word.lower(),
+            self.k,
+        )
 
-        Use a prime `table_size` to avoid the usual modulo-power-of-two
-        pitfalls of positional/polynomial hashes.
-        """
+        return hpss_positional_hash(
+            rep,
+            self.alphabet,
+        )
+
+    def table_index(
+        self,
+        word: str,
+        table_size: int,
+    ) -> int:
+
         return self(word) % table_size
 
 
-if __name__ == "__main__":
-    # Tiny smoke test / demo.
-    h = HPSSHasher(k=8, strategy="HPSS")
-    for w in ["hash", "table", "algorithm", "don't", "abbott's"]:
-        print(f"{w!r:>12} -> {h(w)}")
+# ======================================================================
+# SMOKE TEST
+# ======================================================================
 
-    # Characters outside the configured alphabet are rejected loudly
-    # instead of silently corrupting the encoding (this is BUG 2 from
-    # the module docstring, fixed):
-    try:
-        h("cs50")
-    except UnsupportedCharacterError as exc:
-        print(f"\n(expected) rejected 'cs50': {exc}")
+if __name__ == "__main__":
+
+    h = HPSSHasher(
+        k=8,
+        strategy="HPSS",
+    )
+
+    test_words = [
+        "hash",
+        "table",
+        "algorithm",
+        "don't",
+        "abbott's",
+        "abc123",
+        "test-case",
+        "hello_world",
+        "foo@bar",
+        "C++",
+        "version2.0",
+        "100%",
+    ]
+
+    print("=" * 70)
+    print("HPSS UNICODE ENCODER TEST")
+    print("=" * 70)
+
+    for word in test_words:
+
+        value = h(word)
+
+        print(
+            f"{word!r:>20} -> {value}"
+        )
+
+    print("\nAll test characters accepted.")
