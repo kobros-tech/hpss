@@ -1,13 +1,12 @@
 """Download deterministic external datasets used by the research benchmark.
 
 The repository stores provenance manifests rather than large third-party data
-blobs. CI downloads a fixed prefix from each source so experiments remain
-reproducible without unnecessarily vendoring multi-megabyte upstream files.
+blobs. CI downloads a fixed prefix from the source so experiments remain
+reproducible without unnecessarily vendoring a large upstream file.
 """
 
 from __future__ import annotations
 
-import re
 import urllib.request
 from pathlib import Path
 
@@ -16,12 +15,8 @@ DICT = ROOT / "dictionaries"
 SAMPLE_SIZE = 50_000
 
 SOURCES = {
-    "arabic_stems.txt": (
-        "https://raw.githubusercontent.com/michelleful/FuzzyArabicDict/4ec7af1fd28d14635d937b02dc678d15fd89d327/aramorph/data/dictstems.txt",
-        "arabic",
-    ),
     "estonian_domains.txt": (
-        "https://raw.githubusercontent.com/elliotwutingfeng/EstonianInternetFoundationDomains/173ba6b6f0c7ca8071594803c3e3f64b7e514e8c/domains.txt",
+        "https://raw.githubusercontent.com/elliotwutingfeng/EstonianInternetFoundationDomains/173ba6bfe0c7ca8071594803c3e3f64b7e514e8c/domains.txt",
         "domain",
     ),
 }
@@ -30,18 +25,13 @@ SOURCES = {
 def clean_lines(text: str, kind: str) -> list[str]:
     result: list[str] = []
     for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+        token = line.strip()
+        if not token or token.startswith("#"):
             continue
-        if kind == "arabic":
-            # AraMorph stem records contain tab-separated metadata; the first
-            # field is the lexical stem used as the benchmark key.
-            token = line.split("\t", 1)[0].strip()
-            if token and re.search(r"[\u0600-\u06ff]", token):
-                result.append(token)
-        else:
-            token = line.lower().rstrip(".")
-            if token and " " not in token and "." in token:
+        if kind == "domain":
+            token = token.lower().rstrip(".")
+            # Keep only ASCII domains for the primary HPSS study.
+            if token and " " not in token and "." in token and all(ord(c) < 128 for c in token):
                 result.append(token)
     return list(dict.fromkeys(result))
 
