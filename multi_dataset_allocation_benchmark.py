@@ -6,22 +6,14 @@ import csv
 from pathlib import Path
 
 from benchmark import K_VALUES
+from research_datasets import load_english_words, load_estonian_domains
 from research_experiments import allocation_ablation, generate_random_strings
 
 ROOT = Path(__file__).resolve().parent
-DATASET_PATHS = {
-    "dwyl/english-word": ROOT / "dictionaries/words.txt",
-    "Estonian domains": ROOT / "dictionaries/estonian_domains.txt",
-}
 RANDOM_COUNT = 50_000
 RANDOM_LENGTH = 16
 RANDOM_SEED = 20260816
 OUTPUT = ROOT / "MULTI_DATASET_ALLOCATION_ABLATION.csv"
-
-
-def load(path: Path) -> list[str]:
-    with path.open(encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
 
 
 def run_dataset(dataset: str, values: list[str], rows: list[dict]) -> None:
@@ -36,11 +28,7 @@ def run_dataset(dataset: str, values: list[str], rows: list[dict]) -> None:
         balanced_front = k // 2
         balanced = results[balanced_front]
         winners = [f"{r.front}+{r.back}" for r in results if r.unique == best_unique]
-        print(
-            f"k={k:2d}: best={','.join(winners):>6s} "
-            f"{best_unique:>8,}; balanced={balanced.front}+{balanced.back} "
-            f"{balanced.unique:>8,}"
-        )
+        print(f"k={k:2d}: best={','.join(winners):>6s} {best_unique:>8,}; balanced={balanced.front}+{balanced.back} {balanced.unique:>8,}")
         for r in results:
             rows.append({
                 "dataset": dataset,
@@ -61,17 +49,11 @@ def run_dataset(dataset: str, values: list[str], rows: list[dict]) -> None:
 
 def main() -> None:
     rows: list[dict] = []
-    for dataset, path in DATASET_PATHS.items():
-        run_dataset(dataset, load(path), rows)
-
-    random_values = generate_random_strings(
-        count=RANDOM_COUNT,
-        length=RANDOM_LENGTH,
-        seed=RANDOM_SEED,
-    )
+    run_dataset("dwyl/english-word", load_english_words(), rows)
+    run_dataset("Estonian domains", load_estonian_domains(), rows)
     run_dataset(
         f"random ASCII ({RANDOM_LENGTH}-char, seed={RANDOM_SEED})",
-        random_values,
+        generate_random_strings(count=RANDOM_COUNT, length=RANDOM_LENGTH, seed=RANDOM_SEED),
         rows,
     )
 
