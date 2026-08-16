@@ -15,7 +15,7 @@ from research_experiments import (
 def test_allocation_matches_hpss_for_even_k():
     words = ["abcdefghij", "encyclopedia", "algorithm"]
     assert hpss_matches_balanced_allocation(words, 6)
-    assert select_allocation("abcdefghij", 6, 3) == "abcfghij"
+    assert select_allocation("abcdefghij", 6, 3) == "abchij"
 
 
 def test_allocation_matches_hpss_for_odd_k():
