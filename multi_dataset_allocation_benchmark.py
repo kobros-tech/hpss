@@ -1,4 +1,4 @@
-"""Run the exhaustive front/back allocation experiment across research datasets."""
+"""Run the exhaustive front/back allocation experiment across ASCII datasets."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from research_experiments import allocation_ablation
 ROOT = Path(__file__).resolve().parent
 DATASETS = {
     "dwyl/english-word": ROOT / "dictionaries/words.txt",
-    "Arabic AraMorph stems": ROOT / "dictionaries/arabic_stems.txt",
     "Estonian domains": ROOT / "dictionaries/estonian_domains.txt",
 }
 OUTPUT = ROOT / "MULTI_DATASET_ALLOCATION_ABLATION.csv"
@@ -26,6 +25,8 @@ def main() -> None:
     rows: list[dict[str, int | float | str]] = []
     for dataset, path in DATASETS.items():
         values = load(path)
+        if not all(all(ord(c) < 128 for c in value) for value in values):
+            raise ValueError(f"{dataset} contains non-ASCII input")
         print(f"\n=== {dataset} ({len(values):,} records) ===")
         for k in K_VALUES:
             results = allocation_ablation(values, k)
