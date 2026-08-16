@@ -1,174 +1,44 @@
-"""
-======================================================================
-REAL-WORLD HPSS BENCHMARK
-======================================================================
+"""Reproducible real-world benchmark for HPSS selection and hashing.
 
-Benchmark HPSS against established 64-bit hash functions on a
-real-world dictionary containing letters, numbers, punctuation,
-apostrophes, and other supported characters.
-
-Current dataset:
-
-    dictionaries/words.txt
-
-The benchmark measures two different sources of collisions:
-
-1. REPRESENTATION COLLISIONS
-   --------------------------------
-   Caused by the character-selection strategy itself.
-
-   Example:
-
-       word A -> "abcd....wxyz"
-       word B -> "abcd....wxyz"
-
-   If both words produce the same selected representation, they are
-   already indistinguishable before any hash function is applied.
-
-   These collisions belong to the SELECTION STRATEGY.
-
-2. HASH COLLISIONS
-   --------------------------------
-   Collisions among distinct representations after applying the hash
-   function.
-
-   For HPSS_POSITIONAL, distinct representations should remain
-   distinct because the Unicode positional encoder is injective.
-
-   For FNV-1a, MurmurHash3, and xxHash64, collisions are theoretically
-   possible because they produce fixed-width 64-bit outputs.
-
-The benchmark deliberately applies the reference hash functions to
-the SAME selected representations produced by each strategy.
-
-This allows us to separate:
-
-    selection quality
-            from
-    hash-function behavior
-
-======================================================================
-RUN
-======================================================================
-
-    python3.11 benchmark.py
-
-Produces:
-
-    RESULTS_fresh.csv
-
-======================================================================
+The benchmark reports selection-stage collisions separately from collisions
+introduced by each final encoder. Reference hashes are applied to the exact
+same UTF-8 representations produced by each selector.
 """
 
 from __future__ import annotations
 
 import csv
+import platform
 import statistics
+import sys
 import time
 from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
 
-from hpss_hash import (
-    REFERENCE_HASHES,
-    SELECTION_STRATEGIES,
-    CompiledEncoder,
-)
+from hpss_hash import REFERENCE_HASHES, SELECTION_STRATEGIES, CompiledEncoder
 
+ROOT = Path(__file__).resolve().parent
+DICTIONARY = ROOT / "dictionaries" / "words.txt"
+OUTPUT = ROOT / "RESULTS_fresh.csv"
 
-# ======================================================================
-# CONFIGURATION
-# ======================================================================
-
-# Real-world dictionary containing letters, numbers, punctuation,
-# apostrophes, and potentially other characters.
-DICTIONARY = "dictionaries/words.txt"
-
-# Number of selected characters.
-K_VALUES = [2, 4, 6, 8, 10, 12]
-
-# Number of timing repetitions.
+# Odd values are deliberately included. For odd k, HPSS uses floor(k/2)
+# characters from the front and ceil(k/2) from the back; e.g. k=5 => 2+3.
+K_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 REPETITIONS = 5
-
-
-# ======================================================================
-# HPSS POSITIONAL ENCODER
-# ======================================================================
-
-# No explicit alphabet is supplied.
-#
-# Therefore CompiledEncoder() uses the Unicode code-point encoder:
-#
-#     digit(c) = ord(c) + 1
-#
-# This supports:
-#
-#     a-z
-#     A-Z
-#     0-9
-#     punctuation
-#     symbols
-#     Unicode characters
-#
-# without silently discarding anything.
 
 hpss_encode = CompiledEncoder()
 
 
-# ======================================================================
-# DATASET
-# ======================================================================
-
-def load_words(path: str = DICTIONARY) -> list[str]:
-    """
-    Load one key/word per line.
-
-    Empty lines are ignored.
-
-    Keys are converted to lowercase so the benchmark treats uppercase
-    and lowercase versions of the same textual key as equivalent.
-    """
-
-    with open(path, "r", encoding="utf-8") as f:
-        return [
-            line.strip().lower()
-            for line in f
-            if line.strip()
-        ]
+def load_words(path: Path = DICTIONARY) -> list[str]:
+    """Load and normalize one key per line."""
+    with path.open("r", encoding="utf-8") as f:
+        return [line.strip().lower() for line in f if line.strip()]
 
 
-# ======================================================================
-# COLLISION STATISTICS
-# ======================================================================
-
-def collision_stats(values) -> dict:
-    """
-    Calculate detailed collision statistics.
-
-    Returns:
-
-        unique
-            Number of unique values.
-
-        collision_entries
-            Number of input entries that are not represented uniquely.
-
-            n - unique
-
-        collision_entry_rate
-            collision_entries / n
-
-        collision_pairs
-            Number of colliding pairs.
-
-            For a group of frequency f:
-
-                f * (f - 1) / 2
-
-        max_group
-            Size of the largest collision group.
-    """
-
+def collision_stats(values) -> dict[str, int | float]:
+    """Return unique count, collision entries, pairs, and largest group."""
     n = len(values)
-
     if n == 0:
         return {
             "unique": 0,
@@ -177,342 +47,106 @@ def collision_stats(values) -> dict:
             "collision_pairs": 0,
             "max_group": 0,
         }
-
     counts = Counter(values)
-
     unique = len(counts)
-
-    collision_entries = n - unique
-
-    collision_entry_rate = collision_entries / n
-
-    collision_pairs = sum(
-        f * (f - 1) // 2
-        for f in counts.values()
-        if f >= 2
-    )
-
-    max_group = max(counts.values())
-
     return {
         "unique": unique,
-        "collision_entries": collision_entries,
-        "collision_entry_rate": collision_entry_rate,
-        "collision_pairs": collision_pairs,
-        "max_group": max_group,
+        "collision_entries": n - unique,
+        "collision_entry_rate": (n - unique) / n,
+        "collision_pairs": sum(f * (f - 1) // 2 for f in counts.values() if f > 1),
+        "max_group": max(counts.values()),
     }
 
 
-# ======================================================================
-# TIMING
-# ======================================================================
-
-def timeit(
-    fn,
-    items,
-    repetitions: int = REPETITIONS,
-):
-    """
-    Benchmark a function over all items.
-
-    Returns:
-
-        median_seconds
-        items_per_second
-
-    Median timing is used to reduce the influence of occasional
-    operating-system scheduling noise.
-    """
-
+def timeit(fn, items, repetitions: int = REPETITIONS) -> tuple[float, float]:
+    """Return median elapsed seconds and items/second."""
     timings = []
-
     for _ in range(repetitions):
-
         start = time.perf_counter()
-
         for item in items:
             fn(item)
-
-        elapsed = time.perf_counter() - start
-
-        timings.append(elapsed)
-
+        timings.append(time.perf_counter() - start)
     median = statistics.median(timings)
-
-    throughput = len(items) / median
-
-    return median, throughput
+    return median, len(items) / median
 
 
-# ======================================================================
-# MAIN BENCHMARK
-# ======================================================================
+def build_row(
+    *, k: int, strategy: str, words: int, rep_stats: dict, hash_name: str,
+    hash_stats: dict, seconds: float, throughput: float,
+) -> dict:
+    return {
+        "dataset": "dwyl/english-word",
+        "k": k,
+        "strategy": strategy,
+        "words": words,
+        "representation_unique": rep_stats["unique"],
+        "representation_collision_entries": rep_stats["collision_entries"],
+        "representation_collision_rate": rep_stats["collision_entry_rate"],
+        "representation_collision_pairs": rep_stats["collision_pairs"],
+        "representation_max_group": rep_stats["max_group"],
+        "hash": hash_name,
+        "hash_unique": hash_stats["unique"],
+        "hash_collision_entries": hash_stats["collision_entries"],
+        "hash_collision_rate": hash_stats["collision_entry_rate"],
+        "hash_collision_pairs": hash_stats["collision_pairs"],
+        "hash_max_group": hash_stats["max_group"],
+        "median_seconds": seconds,
+        "hashes_per_second": throughput,
+    }
 
-def main():
 
-    # --------------------------------------------------------------
-    # LOAD DATASET
-    # --------------------------------------------------------------
-
+def main() -> None:
     words = load_words()
-
-    n = len(words)
-
-    print(
-        f"Loaded {n:,} words from {DICTIONARY}"
-    )
-
-    # --------------------------------------------------------------
-    # RESULTS
-    # --------------------------------------------------------------
+    print(f"Loaded {len(words):,} normalized records from {DICTIONARY}")
 
     rows = []
-
-    # --------------------------------------------------------------
-    # K VALUES
-    # --------------------------------------------------------------
-
     for k in K_VALUES:
+        for strategy, selector in SELECTION_STRATEGIES.items():
+            representations = [selector(word, k) for word in words]
+            representation_bytes = [rep.encode("utf-8") for rep in representations]
+            rep_stats = collision_stats(representations)
 
-        # ----------------------------------------------------------
-        # SELECTION STRATEGIES
-        # ----------------------------------------------------------
-
-        for strat_name, selector in SELECTION_STRATEGIES.items():
-
-            # ------------------------------------------------------
-            # CREATE REPRESENTATIONS
-            # ------------------------------------------------------
-
-            reps = [
-                selector(word, k)
-                for word in words
-            ]
-
-            # ------------------------------------------------------
-            # UTF-8 REPRESENTATIONS FOR REFERENCE HASHES
-            # ------------------------------------------------------
-
-            # IMPORTANT:
-            #
-            # The old benchmark used:
-            #
-            #     encode("ascii", errors="ignore")
-            #
-            # which silently discarded unsupported characters.
-            #
-            # That would make the experiment invalid for a dataset
-            # containing Unicode characters.
-            #
-            # UTF-8 preserves the complete selected representation.
-
-            rep_bytes = [
-                representation.encode("utf-8")
-                for representation in reps
-            ]
-
-            # ------------------------------------------------------
-            # REPRESENTATION COLLISION STATISTICS
-            # ------------------------------------------------------
-
-            rep_stats = collision_stats(reps)
-
-            # ------------------------------------------------------
-            # HPSS POSITIONAL ENCODER
-            # ------------------------------------------------------
-
-            hpss_vals = [
-                hpss_encode(representation)
-                for representation in reps
-            ]
-
-            hpss_stats = collision_stats(
-                hpss_vals
-            )
-
-            _, hpss_speed = timeit(
-                hpss_encode,
-                reps,
-            )
-
-            # ------------------------------------------------------
-            # HPSS RESULT
-            # ------------------------------------------------------
-
-            rows.append({
-                "k": k,
-                "strategy": strat_name,
-                "words": n,
-
-                "representation_unique":
-                    rep_stats["unique"],
-
-                "representation_collision_entries":
-                    rep_stats["collision_entries"],
-
-                "representation_collision_rate":
-                    rep_stats["collision_entry_rate"],
-
-                "representation_collision_pairs":
-                    rep_stats["collision_pairs"],
-
-                "representation_max_group":
-                    rep_stats["max_group"],
-
-                "hash":
-                    "HPSS_POSITIONAL",
-
-                "hash_unique":
-                    hpss_stats["unique"],
-
-                "hash_collision_entries":
-                    hpss_stats["collision_entries"],
-
-                "hash_collision_rate":
-                    hpss_stats["collision_entry_rate"],
-
-                "hash_collision_pairs":
-                    hpss_stats["collision_pairs"],
-
-                "hash_max_group":
-                    hpss_stats["max_group"],
-
-                "hashes_per_second":
-                    hpss_speed,
-            })
-
-            # ------------------------------------------------------
-            # REFERENCE HASH FUNCTIONS
-            # ------------------------------------------------------
+            median, speed = timeit(hpss_encode, representations)
+            hpss_values = [hpss_encode(rep) for rep in representations]
+            hpss_stats = collision_stats(hpss_values)
+            rows.append(build_row(
+                k=k, strategy=strategy, words=len(words), rep_stats=rep_stats,
+                hash_name="HPSS_POSITIONAL", hash_stats=hpss_stats,
+                seconds=median, throughput=speed,
+            ))
 
             for hash_name, hash_fn in REFERENCE_HASHES.items():
+                median, speed = timeit(hash_fn, representation_bytes)
+                values = [hash_fn(data) for data in representation_bytes]
+                stats = collision_stats(values)
+                rows.append(build_row(
+                    k=k, strategy=strategy, words=len(words), rep_stats=rep_stats,
+                    hash_name=hash_name, hash_stats=stats,
+                    seconds=median, throughput=speed,
+                ))
+        print(f"k={k} done")
 
-                try:
-
-                    vals = [
-                        hash_fn(data)
-                        for data in rep_bytes
-                    ]
-
-                except RuntimeError as exc:
-
-                    print(
-                        f"skipping {hash_name}: {exc}"
-                    )
-
-                    continue
-
-                stats = collision_stats(vals)
-
-                _, speed = timeit(
-                    hash_fn,
-                    rep_bytes,
-                )
-
-                rows.append({
-                    "k": k,
-                    "strategy": strat_name,
-                    "words": n,
-
-                    "representation_unique":
-                        rep_stats["unique"],
-
-                    "representation_collision_entries":
-                        rep_stats["collision_entries"],
-
-                    "representation_collision_rate":
-                        rep_stats["collision_entry_rate"],
-
-                    "representation_collision_pairs":
-                        rep_stats["collision_pairs"],
-
-                    "representation_max_group":
-                        rep_stats["max_group"],
-
-                    "hash":
-                        hash_name,
-
-                    "hash_unique":
-                        stats["unique"],
-
-                    "hash_collision_entries":
-                        stats["collision_entries"],
-
-                    "hash_collision_rate":
-                        stats["collision_entry_rate"],
-
-                    "hash_collision_pairs":
-                        stats["collision_pairs"],
-
-                    "hash_max_group":
-                        stats["max_group"],
-
-                    "hashes_per_second":
-                        speed,
-                })
-
-        print(
-            f"k={k} done"
-        )
-
-    # ==================================================================
-    # WRITE CSV
-    # ==================================================================
-
-    output_file = "RESULTS_fresh.csv"
-
-    with open(
-        output_file,
-        "w",
-        newline="",
-        encoding="utf-8",
-    ) as f:
-
-        writer = csv.DictWriter(
-            f,
-            fieldnames=list(rows[0].keys()),
-        )
-
+    fieldnames = list(rows[0])
+    with OUTPUT.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-
         writer.writerows(rows)
 
-    print(
-        f"\nWrote {output_file}"
-    )
+    metadata = {
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "dataset": str(DICTIONARY.relative_to(ROOT)),
+        "records": len(words),
+        "k_values": ",".join(map(str, K_VALUES)),
+        "repetitions": REPETITIONS,
+    }
+    meta_path = ROOT / "RESULTS_METADATA.txt"
+    meta_path.write_text("\n".join(f"{k}={v}" for k, v in metadata.items()) + "\n", encoding="utf-8")
 
-    # ==================================================================
-    # COMPACT HPSS SUMMARY
-    # ==================================================================
+    print(f"Wrote {OUTPUT}")
+    print(f"Wrote {meta_path}")
 
-    print(
-        "\n"
-        " k | hash             | unique  | coll.entries | "
-        "coll.rate | coll.pairs | max.group | hashes/sec"
-    )
-
-    print("-" * 115)
-
-    for row in rows:
-
-        if row["strategy"] != "HPSS":
-            continue
-
-        print(
-            f"{row['k']:2d} | "
-            f"{row['hash']:<16} | "
-            f"{row['hash_unique']:7,} | "
-            f"{row['hash_collision_entries']:12,} | "
-            f"{row['hash_collision_rate'] * 100:8.4f}% | "
-            f"{row['hash_collision_pairs']:10,} | "
-            f"{row['hash_max_group']:9,} | "
-            f"{row['hashes_per_second']:11,.0f}"
-        )
-
-
-# ======================================================================
-# ENTRY POINT
-# ======================================================================
 
 if __name__ == "__main__":
     main()
