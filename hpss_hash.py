@@ -31,29 +31,15 @@ def make_digit_table(alphabet: str) -> dict[str, int]:
     return {ch: i + 1 for i, ch in enumerate(alphabet)}
 
 
-def hpss_positional_hash(
-    text: str,
-    alphabet: str | None = None,
-    *,
-    on_unknown: str = "raise",
-) -> int:
-    """Encode a string with positive positional digits.
-
-    In Unicode mode, digit(c) = ord(c) + 1 and base = 0x110000.
-    Because all digits are positive and bounded by the base, the encoding
-    is injective for finite strings; Python's integer has arbitrary precision.
-
-    ``alphabet=...`` enables the earlier closed-alphabet mode.
-    """
+def hpss_positional_hash(text: str, alphabet: str | None = None, *, on_unknown: str = "raise") -> int:
+    """Encode a string with positive positional digits."""
     if on_unknown not in {"raise", "skip"}:
         raise ValueError("on_unknown must be 'raise' or 'skip'")
-
     if alphabet is None:
         h = 0
         for ch in text:
             h = h * UNICODE_BASE + ord(ch) + 1
         return h
-
     digits = make_digit_table(alphabet)
     base = len(alphabet)
     h = 0
@@ -62,9 +48,7 @@ def hpss_positional_hash(
         if digit is None:
             if on_unknown == "skip":
                 continue
-            raise UnsupportedCharacterError(
-                f"character {ch!r} is not in the configured alphabet"
-            )
+            raise UnsupportedCharacterError(f"character {ch!r} is not in the configured alphabet")
         h = h * base + digit
     return h
 
@@ -72,7 +56,6 @@ def hpss_positional_hash(
 @dataclass(frozen=True)
 class CompiledEncoder:
     """Reusable positional encoder."""
-
     alphabet: str | None = None
     on_unknown: str = "raise"
 
@@ -92,16 +75,13 @@ class CompiledEncoder:
             for ch in text:
                 h = h * self._base + ord(ch) + 1
             return h
-
         h = 0
         for ch in text:
             digit = self._digits.get(ch)
             if digit is None:
                 if self.on_unknown == "skip":
                     continue
-                raise UnsupportedCharacterError(
-                    f"character {ch!r} is not in the configured alphabet"
-                )
+                raise UnsupportedCharacterError(f"character {ch!r} is not in the configured alphabet")
             h = h * self._base + digit
         return h
 
@@ -111,31 +91,31 @@ class CompiledEncoder:
 # ----------------------------------------------------------------------
 
 def select_prefix(word: str, k: int) -> str:
+    if k < 0:
+        raise ValueError("k must be non-negative")
     return word[:k]
 
 
 def select_suffix(word: str, k: int) -> str:
+    if k < 0:
+        raise ValueError("k must be non-negative")
     return word[-k:] if len(word) > k else word
 
 
 def select_hpss(word: str, k: int) -> str:
     """Select k characters from both ends.
 
-    Even k:
-        k/2 from the front and k/2 from the back.
-
-    Odd k:
-        floor(k/2) from the front and ceil(k/2) from the back.
+    Even k: k/2 from the front and k/2 from the back.
+    Odd k: floor(k/2) from the front and ceil(k/2) from the back.
 
     Thus k=5 means 2 characters from the front and 3 from the back.
-    This rule is deterministic, uses exactly k characters when len(word)>k,
-    and is part of the formal HPSS definition.
     """
     if k < 0:
         raise ValueError("k must be non-negative")
     if len(word) <= k:
         return word
-
+    if k == 0:
+        return ""
     front = k // 2
     back = k - front
     return word[:front] + word[-back:]
@@ -175,9 +155,7 @@ def hash_murmur3_64(data: bytes) -> int:
     try:
         import mmh3
     except ImportError as exc:
-        raise RuntimeError(
-            "mmh3 is not installed; install the benchmark dependencies"
-        ) from exc
+        raise RuntimeError("mmh3 is not installed; install the benchmark dependencies") from exc
     value, _ = mmh3.hash64(data, seed=0, signed=False)
     return value
 
@@ -186,9 +164,7 @@ def hash_xxhash64(data: bytes) -> int:
     try:
         import xxhash
     except ImportError as exc:
-        raise RuntimeError(
-            "xxhash is not installed; install the benchmark dependencies"
-        ) from exc
+        raise RuntimeError("xxhash is not installed; install the benchmark dependencies") from exc
     return xxhash.xxh64(data).intdigest()
 
 
@@ -202,7 +178,6 @@ REFERENCE_HASHES: dict[str, Callable[[bytes], int]] = {
 @dataclass(frozen=True)
 class HPSSHasher:
     """Complete HPSS pipeline: normalize, select, then encode."""
-
     k: int = 8
     strategy: str = "HPSS"
     alphabet: str | None = None
