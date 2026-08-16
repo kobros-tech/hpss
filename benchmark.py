@@ -1,9 +1,4 @@
-"""Reproducible real-world benchmark for HPSS selection and hashing.
-
-The benchmark reports selection-stage collisions separately from collisions
-introduced by each final encoder. Reference hashes are applied to the exact
-same UTF-8 representations produced by each selector.
-"""
+"""Reproducible real-world benchmark for HPSS selection and hashing."""
 
 from __future__ import annotations
 
@@ -17,13 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from hpss_hash import REFERENCE_HASHES, SELECTION_STRATEGIES, CompiledEncoder
+from research_datasets import load_english_words
 
 ROOT = Path(__file__).resolve().parent
 DICTIONARY = ROOT / "dictionaries" / "words.txt"
 OUTPUT = ROOT / "RESULTS_fresh.csv"
 
-# Odd values are deliberately included. For odd k, HPSS uses floor(k/2)
-# characters from the front and ceil(k/2) from the back; e.g. k=5 => 2+3.
 K_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 REPETITIONS = 5
 
@@ -31,22 +25,14 @@ hpss_encode = CompiledEncoder()
 
 
 def load_words(path: Path = DICTIONARY) -> list[str]:
-    """Load and normalize one key per line."""
-    with path.open("r", encoding="utf-8") as f:
-        return [line.strip().lower() for line in f if line.strip()]
+    """Load words using the canonical ASCII normalization shared by all experiments."""
+    return load_english_words(path)
 
 
 def collision_stats(values) -> dict[str, int | float]:
-    """Return unique count, collision entries, pairs, and largest group."""
     n = len(values)
     if n == 0:
-        return {
-            "unique": 0,
-            "collision_entries": 0,
-            "collision_entry_rate": 0.0,
-            "collision_pairs": 0,
-            "max_group": 0,
-        }
+        return {"unique": 0, "collision_entries": 0, "collision_entry_rate": 0.0, "collision_pairs": 0, "max_group": 0}
     counts = Counter(values)
     unique = len(counts)
     return {
@@ -59,7 +45,6 @@ def collision_stats(values) -> dict[str, int | float]:
 
 
 def timeit(fn, items, repetitions: int = REPETITIONS) -> tuple[float, float]:
-    """Return median elapsed seconds and items/second."""
     timings = []
     for _ in range(repetitions):
         start = time.perf_counter()
@@ -70,10 +55,7 @@ def timeit(fn, items, repetitions: int = REPETITIONS) -> tuple[float, float]:
     return median, len(items) / median
 
 
-def build_row(
-    *, k: int, strategy: str, words: int, rep_stats: dict, hash_name: str,
-    hash_stats: dict, seconds: float, throughput: float,
-) -> dict:
+def build_row(*, k: int, strategy: str, words: int, rep_stats: dict, hash_name: str, hash_stats: dict, seconds: float, throughput: float) -> dict:
     return {
         "dataset": "dwyl/english-word",
         "k": k,
@@ -98,7 +80,6 @@ def build_row(
 def main() -> None:
     words = load_words()
     print(f"Loaded {len(words):,} normalized records from {DICTIONARY}")
-
     rows = []
     for k in K_VALUES:
         for strategy, selector in SELECTION_STRATEGIES.items():
@@ -109,26 +90,17 @@ def main() -> None:
             median, speed = timeit(hpss_encode, representations)
             hpss_values = [hpss_encode(rep) for rep in representations]
             hpss_stats = collision_stats(hpss_values)
-            rows.append(build_row(
-                k=k, strategy=strategy, words=len(words), rep_stats=rep_stats,
-                hash_name="HPSS_POSITIONAL", hash_stats=hpss_stats,
-                seconds=median, throughput=speed,
-            ))
+            rows.append(build_row(k=k, strategy=strategy, words=len(words), rep_stats=rep_stats, hash_name="HPSS_POSITIONAL", hash_stats=hpss_stats, seconds=median, throughput=speed))
 
             for hash_name, hash_fn in REFERENCE_HASHES.items():
                 median, speed = timeit(hash_fn, representation_bytes)
                 values = [hash_fn(data) for data in representation_bytes]
                 stats = collision_stats(values)
-                rows.append(build_row(
-                    k=k, strategy=strategy, words=len(words), rep_stats=rep_stats,
-                    hash_name=hash_name, hash_stats=stats,
-                    seconds=median, throughput=speed,
-                ))
+                rows.append(build_row(k=k, strategy=strategy, words=len(words), rep_stats=rep_stats, hash_name=hash_name, hash_stats=stats, seconds=median, throughput=speed))
         print(f"k={k} done")
 
-    fieldnames = list(rows[0])
     with OUTPUT.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
 
@@ -140,10 +112,10 @@ def main() -> None:
         "records": len(words),
         "k_values": ",".join(map(str, K_VALUES)),
         "repetitions": REPETITIONS,
+        "normalization": "canonical ASCII: strip, lowercase, non-empty, ASCII-only, stable deduplication",
     }
     meta_path = ROOT / "RESULTS_METADATA.txt"
     meta_path.write_text("\n".join(f"{k}={v}" for k, v in metadata.items()) + "\n", encoding="utf-8")
-
     print(f"Wrote {OUTPUT}")
     print(f"Wrote {meta_path}")
 
