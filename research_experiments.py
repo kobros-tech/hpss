@@ -9,7 +9,7 @@ This module adds the experiments motivated by peer review:
 * input-length stratification.
 
 The experiments deliberately keep *selection* separate from downstream
-hashing.  The primary outcome is therefore representation uniqueness; the
+hashing. The primary outcome is therefore representation uniqueness; the
 reference hash functions are optional secondary checks.
 """
 
@@ -21,10 +21,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
-from hpss_hash import (
-    SELECTION_STRATEGIES,
-    select_hpss,
-)
+from hpss_hash import SELECTION_STRATEGIES, select_hpss
 
 
 @dataclass(frozen=True)
@@ -38,10 +35,11 @@ class AllocationResult:
     collision_entries: int
     collision_pairs: int
     max_group: int
+    records: int
 
     @property
     def unique_rate(self) -> float:
-        return self.unique
+        return self.unique / self.records if self.records else 0.0
 
 
 def collision_stats(values: Iterable[str]) -> dict[str, int | float]:
@@ -68,11 +66,7 @@ def collision_stats(values: Iterable[str]) -> dict[str, int | float]:
 
 
 def select_allocation(word: str, k: int, front: int) -> str:
-    """Select ``front`` characters from the front and the remainder from back.
-
-    For inputs shorter than or equal to k, the complete input is retained.
-    ``front`` must be between 0 and k inclusive.
-    """
+    """Select ``front`` characters from the front and the remainder from back."""
     if k < 0:
         raise ValueError("k must be non-negative")
     if not 0 <= front <= k:
@@ -102,6 +96,7 @@ def allocation_ablation(words: Iterable[str], k: int) -> list[AllocationResult]:
                 collision_entries=int(stats["collision_entries"]),
                 collision_pairs=int(stats["collision_pairs"]),
                 max_group=int(stats["max_group"]),
+                records=len(words),
             )
         )
     return results
@@ -110,12 +105,11 @@ def allocation_ablation(words: Iterable[str], k: int) -> list[AllocationResult]:
 def hpss_matches_balanced_allocation(words: Iterable[str], k: int) -> bool:
     """Verify that the current HPSS rule equals the balanced allocation."""
     front = k // 2
-    back = k - front
     return all(select_hpss(word, k) == select_allocation(word, k, front) for word in words)
 
 
 def collision_group_distribution(values: Iterable[str]) -> dict[int, int]:
-    """Return ``group_size -> number_of_groups`` for groups containing >1 item."""
+    """Return group_size -> number_of_groups for groups containing >1 item."""
     counts = Counter(values)
     return dict(sorted(Counter(v for v in counts.values() if v > 1).items()))
 
@@ -139,7 +133,7 @@ def length_buckets(words: Iterable[str], boundaries: tuple[int, ...] = (4, 8, 12
                 break
             previous = boundary
         if not placed:
-            result[f"{boundaries[-1] + 1}+"].append(word)
+            result[f"{boundaries[-1] + 1}+"] .append(word)
     return {key: value for key, value in result.items() if value}
 
 
@@ -154,7 +148,7 @@ def generate_structured_identifiers(count: int = 50_000, seed: int = 20260816) -
     """Generate deterministic identifiers with structured prefix/suffix fields."""
     rng = random.Random(seed)
     return [
-        f"svc-{rng.randrange(1000):03d}-region-{rng.choice(['eu','us','ap'])}-{rng.randrange(100000):05d}"
+        f"svc-{rng.randrange(1000):03d}-region-{rng.choice(['eu', 'us', 'ap'])}-{rng.randrange(100000):05d}"
         for _ in range(count)
     ]
 
@@ -163,20 +157,19 @@ def bootstrap_mean_difference(
     baseline: Iterable[int], treatment: Iterable[int], *,
     iterations: int = 5000, seed: int = 20260816,
 ) -> tuple[float, float, float]:
-    """Bootstrap mean(treatment-baseline) and return 95% percentile CI."""
+    """Bootstrap mean(treatment-baseline) and return a 95% percentile CI."""
+    if iterations < 100:
+        raise ValueError("iterations must be at least 100")
     baseline = list(baseline)
     treatment = list(treatment)
     if len(baseline) != len(treatment) or not baseline:
         raise ValueError("paired samples must be non-empty and have equal length")
     differences = [t - b for b, t in zip(baseline, treatment)]
     rng = random.Random(seed)
-    samples: list[float] = []
-    for _ in range(iterations):
-        sample = [rng.choice(differences) for _ in differences]
-        samples.append(statistics.mean(sample))
+    samples = [statistics.mean(rng.choices(differences, k=len(differences))) for _ in range(iterations)]
     samples.sort()
-    low = samples[int(0.025 * len(samples))]
-    high = samples[int(0.975 * len(samples))]
+    low = samples[int(0.025 * (len(samples) - 1))]
+    high = samples[int(0.975 * (len(samples) - 1))]
     return statistics.mean(differences), low, high
 
 
