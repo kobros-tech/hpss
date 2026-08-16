@@ -1,0 +1,40 @@
+name: HPSS Benchmark
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install benchmark dependencies
+        run: python -m pip install --upgrade pip mmh3 xxhash
+
+      - name: Run benchmark
+        run: python benchmark.py
+
+      - name: Publish benchmark CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-benchmark-results
+          path: RESULTS_fresh.csv
+          if-no-files-found: error
+
+      - name: Print benchmark results
+        run: |
+          echo '--- RESULTS_fresh.csv ---'
+          cat RESULTS_fresh.csv
