@@ -38,3 +38,18 @@ jobs:
         run: |
           echo '--- RESULTS_fresh.csv ---'
           cat RESULTS_fresh.csv
+
+      - name: Run allocation ablation
+        run: python allocation_ablation_benchmark.py
+
+      - name: Publish allocation ablation CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-allocation-ablation-results
+          path: ALLOCATION_ABLATION.csv
+          if-no-files-found: error
+
+      - name: Print allocation ablation results
+        run: |
+          echo '--- ALLOCATION_ABLATION.csv ---'
+          cat ALLOCATION_ABLATION.csv
