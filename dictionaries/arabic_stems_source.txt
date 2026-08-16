@@ -1,6 +1,0 @@
-# Arabic lexical control dataset
-# Source repository: https://github.com/michelleful/FuzzyArabicDict
-# Source file: aramorph/data/dictstems.txt
-# Source commit: 4ec7af1fd28d14635d937b02dc678d15fd89d327
-# License/provenance must be reviewed before paper redistribution.
-# CI downloads a deterministic 50,000-record sample for experiments.
