@@ -1,0 +1,6 @@
+# English word dataset
+# Source repository: https://github.com/dwyl/english-words
+# Source file: words.txt
+# Source commit: 20f5cc9b3f0ccc8ce45d814c532b7c2031bba31c
+# License/provenance: Unlicense; verify current upstream terms before redistribution.
+# CI downloads the pinned source file for experiments.
