@@ -10,7 +10,7 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -23,6 +23,9 @@ jobs:
 
       - name: Install benchmark dependencies
         run: python -m pip install --upgrade pip mmh3 xxhash
+
+      - name: Download pinned research datasets
+        run: python download_research_datasets.py
 
       - name: Run benchmark
         run: python benchmark.py
@@ -38,3 +41,33 @@ jobs:
         run: |
           echo '--- RESULTS_fresh.csv ---'
           cat RESULTS_fresh.csv
+
+      - name: Run allocation ablation
+        run: python allocation_ablation_benchmark.py
+
+      - name: Publish allocation ablation CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-allocation-ablation-results
+          path: ALLOCATION_ABLATION.csv
+          if-no-files-found: error
+
+      - name: Print allocation ablation results
+        run: |
+          echo '--- ALLOCATION_ABLATION.csv ---'
+          cat ALLOCATION_ABLATION.csv
+
+      - name: Run multi-dataset allocation ablation
+        run: python multi_dataset_allocation_benchmark.py
+
+      - name: Publish multi-dataset results
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-multi-dataset-allocation-results
+          path: MULTI_DATASET_ALLOCATION_ABLATION.csv
+          if-no-files-found: error
+
+      - name: Print multi-dataset results
+        run: |
+          echo '--- MULTI_DATASET_ALLOCATION_ABLATION.csv ---'
+          cat MULTI_DATASET_ALLOCATION_ABLATION.csv

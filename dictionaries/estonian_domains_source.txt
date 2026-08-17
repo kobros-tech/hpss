@@ -1,0 +1,6 @@
+# Estonian Internet Foundation domain dataset
+# Source repository: https://github.com/elliotwutingfeng/EstonianInternetFoundationDomains
+# Source file: domains.txt
+# Source commit: 173ba6b6f0c7ca8071594803c3e3f64b7e514e8c
+# License/provenance must be reviewed before paper redistribution.
+# CI downloads a deterministic 50,000-record sample for experiments.
