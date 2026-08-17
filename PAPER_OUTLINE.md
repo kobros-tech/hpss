@@ -2,15 +2,15 @@
 
 ## Title
 
-**Hybrid Prefix-Suffix Selection for Compact ASCII Textual Keys: An Empirical Study of Boundary Allocation and Collision Structure**
+**Hybrid Prefix-Suffix Selection for Compact ASCII Textual Keys: An Empirical Study of Boundary Allocation, Collision Structure, and Speed Trade-offs**
 
 ## Abstract
 
-Compact representations of textual keys are often constructed by retaining a fixed number of characters before applying a hash or encoding function. This work studies **Hybrid Prefix-Suffix Selection (HPSS)**, a deterministic strategy that retains characters from both boundaries of a key. Rather than assuming that a balanced prefix/suffix split is optimal, we exhaustively evaluate every allocation of a fixed character budget between the two boundaries.
+Compact representations of textual keys are often constructed by retaining a fixed number of characters before applying a hash or encoding function. This work studies **Hybrid Prefix-Suffix Selection (HPSS)**, a deterministic strategy that retains characters from both boundaries of a key. Rather than assuming that a balanced prefix/suffix split is optimal, we exhaustively evaluate every allocation of a fixed character budget between the two boundaries and additionally parameterize the allocation with a ratio `alpha`.
 
-The evaluation separates **representation collisions**, caused by information discarded during selection, from **downstream hash collisions**, caused by the encoder. Experiments cover a normalized 466,546-record English-word corpus, a 50,000-record ASCII domain sample, and a deterministic random-ASCII control. The results show that allocation quality is strongly dataset-dependent. On English words, the balanced HPSS split is not optimal for `k >= 4`, and the best allocation reaches `10+2` at `k=12`, improving unique representations from 462,335 to 463,579 and reducing collision pairs from 9,679 to 3,533. On the domain sample, prefix-only selection is best for every tested `k`. On random ASCII strings, allocation has little practical effect once sufficient characters are retained. No additional collisions were observed among distinct selected representations when processed by FNV-1a, MurmurHash3, or xxHash64 in the finite benchmark.
+The evaluation separates **representation collisions**, caused by information discarded during selection, from **downstream hash collisions**, caused by the encoder. Experiments cover a normalized 466,546-record English-word corpus, a 50,000-record ASCII domain sample, and a deterministic random-ASCII control. The results show that allocation quality is strongly dataset- and objective-dependent. On English words, the balanced HPSS split is not optimal for larger `k`, and prefix-heavy allocations perform better. On the domain sample, prefix-only selection is best for every tested `k`. On random ASCII strings, allocation has little practical effect once sufficient characters are retained. The ratio experiment further shows that collision entries, collision pairs, maximum collision-group size, and speed can favor different allocations, so there is no scientifically justified universal alpha from these experiments alone. No additional collisions were observed among distinct selected representations when processed by FNV-1a, MurmurHash3, or xxHash64 in the finite benchmark.
 
-The results support a narrow conclusion: **the value of boundary selection depends on the statistical structure of the keys**. HPSS should therefore be regarded as a dataset-dependent representation heuristic rather than a universally superior hashing method.
+The results support a narrow conclusion: **the value of boundary selection depends on the statistical structure of the keys and on the objective being optimized**. HPSS should therefore be regarded as a dataset-dependent representation heuristic rather than a universally superior hashing method.
 
 ---
 
@@ -43,16 +43,21 @@ The experiments therefore measure representation quality independently from hash
 3. Is a balanced front/back allocation actually optimal?
 4. Does the answer depend on the statistical structure of the keys?
 5. Do downstream hash functions introduce additional collisions among distinct selected representations?
+6. Does a ratio parameter provide a useful way to explore the allocation family?
+7. Which allocation is preferred when collision entries, collision pairs, maximum collision-group size, or speed is the optimization objective?
 
 ### 1.4 Contributions
 
 The study contributes:
 
 - a precise definition of the HPSS selection rule;
+- a generalized ratio parameterization of prefix/suffix allocation;
 - a separation of representation and downstream hash collisions;
 - exhaustive front/back allocation ablation rather than an assumed 50/50 split;
+- objective-specific analysis of collision entries, collision pairs, maximum collision-group size, unique representations, and selector throughput;
+- a Pareto analysis of collision-pair behavior versus speed;
 - a reproducible comparison across lexical, real-world identifier, and random ASCII inputs;
-- an empirical demonstration that the optimal allocation is dataset-dependent.
+- an empirical demonstration that the preferred allocation is dataset- and objective-dependent.
 
 ---
 
@@ -70,7 +75,7 @@ back  = k - front
 HPSS(w,k) = w[:front] + w[-back:]
 ```
 
-For odd `k`, the extra character goes to the suffix.
+For odd `k`, the extra character goes to the suffix. This original rule remains unchanged for reproducibility.
 
 ### 2.2 General allocation family
 
@@ -84,7 +89,23 @@ where `p` ranges from `0` through `k`.
 
 Thus the experiment includes PREFIX-only, SUFFIX-only, balanced HPSS, and every intermediate allocation.
 
-### 2.3 Baselines
+### 2.3 Ratio formulation
+
+The generalized selector expresses the allocation using `alpha`:
+
+```text
+k_eff = min(k, len(w))
+p = round_half_up(alpha * k_eff)
+s = k_eff - p
+```
+
+where `0 <= alpha <= 1`.
+
+`alpha=0` is suffix-only, `alpha=1` is prefix-only, and intermediate values allocate the effective budget between the two boundaries.
+
+Because allocation is discrete, alpha is a parameterization rather than an independent experimental degree of freedom: for a fixed `k`, there are only `k+1` distinct allocation outcomes. The experiment therefore evaluates allocations exhaustively and reports the alpha value/interval corresponding to each outcome.
+
+### 2.4 Baselines
 
 The principal selectors are:
 
@@ -94,7 +115,7 @@ The principal selectors are:
 - balanced HPSS;
 - all front/back allocations in the ablation experiment.
 
-### 2.4 Downstream encoders
+### 2.5 Downstream encoders
 
 The study evaluates the proposed arbitrary-precision positional encoder and three established fixed-width hash functions:
 
@@ -142,9 +163,28 @@ For each selector and allocation, report:
 - unique downstream hash values;
 - downstream collision entries/rate/pairs/max group.
 
-### 3.5 Reproducibility
+The ratio experiment additionally reports median selector time and throughput. Separate objective-specific analyses determine the best allocation under each metric rather than treating one metric as a universal definition of “collision quality.”
 
-Dataset sources are pinned, synthetic controls use fixed seeds, and the same canonical loader is used across benchmark paths. The repository records benchmark metadata and dependencies.
+### 3.5 Ratio experiment and Pareto analysis
+
+For each `k`, every distinct allocation `p=0..k` is benchmarked repeatedly. The experiment records the canonical alpha value associated with that allocation, its alpha interval under the half-up rule, collision statistics, and selector throughput.
+
+The analysis generates:
+
+```text
+ratio_unique_optima.csv
+ratio_collision_entries_optima.csv
+ratio_collision_pairs_optima.csv
+ratio_max_group_optima.csv
+ratio_speed_optima.csv
+ratio_pareto_frontier.csv
+```
+
+The Pareto analysis uses collision pairs and throughput. A configuration is Pareto-optimal when no other tested allocation simultaneously improves both quantities.
+
+### 3.6 Reproducibility
+
+Dataset sources are pinned, synthetic controls use fixed seeds, and the same canonical loader is used across benchmark paths. The repository records benchmark metadata and dependencies. GitHub Actions runs the ratio experiment and analysis and publishes the machine-readable result files as workflow artifacts.
 
 ---
 
@@ -152,7 +192,9 @@ Dataset sources are pinned, synthetic controls use fixed seeds, and the same can
 
 ### 4.1 English words
 
-The exhaustive allocation experiment shows that balanced HPSS is not the best allocation for `k >= 4`.
+The exhaustive allocation experiment shows that balanced HPSS is not the best allocation for larger `k`.
+
+The direct allocation ablation reports the following best allocations under the repository's primary uniqueness/collision comparison:
 
 | k | Best allocation |
 |---:|---:|
@@ -172,10 +214,10 @@ At `k=12`:
 
 ```text
 balanced 6+6  -> 462,335 unique, 9,679 collision pairs
-best 10+2     -> 463,579 unique, 3,533 collision pairs
+10+2          -> 463,579 unique, 3,533 collision pairs
 ```
 
-The difference is not merely a small change in the number of unique values: the collision-pair count falls substantially under the best allocation.
+The ratio analysis adds an important qualification: the optimum depends on which collision metric is selected. Collision entries, collision pairs, maximum collision-group size, unique representations, and speed are therefore reported separately.
 
 ### 4.2 ASCII domains
 
@@ -192,13 +234,19 @@ This is a direct counterexample to the idea that retaining both boundaries is al
 
 ### 4.3 Random ASCII control
 
-For sufficiently large `k`, essentially all tested allocations produce unique representations in the random control. This means that the allocation differences observed in structured datasets are not reproduced when the input distribution lacks comparable structure.
+For sufficiently large `k`, essentially all tested allocations produce unique representations in the random control. This means that the allocation differences observed in structured datasets are not reproduced when the input distribution lacks comparable positional structure.
 
-### 4.4 Downstream hashes
+### 4.4 Speed and trade-offs
+
+The ratio experiment measures selector-level throughput for every distinct allocation. Prefix-only allocation is the fastest measured allocation in the tested environment across the tested `k` values.
+
+The collision-optimal and speed-optimal allocations need not coincide. The Pareto frontier therefore provides a more useful description of the trade-off than a single recommended alpha.
+
+### 4.5 Downstream hashes
 
 For the finite benchmark, the representation-stage collision statistics are unchanged after FNV-1a, MurmurHash3, and xxHash64. No additional collisions among distinct selected representations were observed.
 
-This should be reported as an empirical finite-sample result, not as a universal collision guarantee.
+This should be reported as a finite-sample empirical result, not as a universal collision guarantee.
 
 ---
 
@@ -208,19 +256,27 @@ This should be reported as an empirical finite-sample result, not as a universal
 
 The experiments reject the narrow hypothesis that a balanced split is generally optimal. On English words, asymmetric allocations perform better at larger representation budgets. On domains, prefix-only selection performs best.
 
-### 5.2 Dataset dependence
+### 5.2 Dataset and objective dependence
 
 The strongest common observation across the experiments is that positional information is distribution-dependent.
 
 English words contain linguistic regularities that make both boundaries informative, but the information is not equally distributed between them. Domain names have different positional structure, and the prefix contains enough information in the tested sample that adding suffix characters is counterproductive at the measured budget. Random strings do not exhibit a comparable positional structure.
 
-### 5.3 What the study does not show
+The ratio experiment adds a second qualification: “best” depends on the objective. An allocation that reduces the number of input records participating in collisions need not minimize the number of colliding pairs, and an allocation with better collision structure need not maximize selector throughput.
+
+### 5.3 The role of alpha
+
+The experiments do not justify treating a value such as `alpha=0.76` as a universal constant. Alpha is best understood as a convenient parameterization of the discrete prefix/suffix allocation family.
+
+A workload can choose an allocation based on its objective and empirical distribution. The repository provides the machinery to measure that choice rather than embedding a universal optimum into the algorithm.
+
+### 5.4 What the study does not show
 
 The experiments do **not** show that HPSS is a better general-purpose hash function than established hashes.
 
-They also do not establish a universal optimal allocation such as `10+2`. That allocation is the best observed for one tested corpus at `k=12`; it should not be generalized to other workloads without evidence.
+They also do not establish a universal optimal allocation such as `10+2`. That allocation is the best observed under a particular metric for one tested corpus and representation size; it should not be generalized to other workloads without evidence.
 
-### 5.4 Representation versus hashing
+### 5.5 Representation versus hashing
 
 The experiments reinforce the importance of measuring selection collisions separately. Once information is discarded by a selector, a downstream hash cannot restore it. Conversely, a hash function should not be blamed for collisions that already existed in the selected representation.
 
@@ -235,6 +291,8 @@ The experiments reinforce the importance of measuring selection collisions separ
 - No adversarial-key analysis is included.
 - The positional encoder is arbitrary precision rather than fixed-width.
 - Timing is environment-dependent.
+- Selector-level timing does not establish end-to-end application performance.
+- Alpha parameterizes a discrete allocation family rather than a continuously varying representation.
 - Dataset-specific optima should not be treated as universal rules.
 
 ---
@@ -243,17 +301,17 @@ The experiments reinforce the importance of measuring selection collisions separ
 
 HPSS provides a simple way to construct compact representations from the boundaries of textual keys, but the experiments do not support a universal claim of superiority.
 
-The main empirical finding is more specific: **the optimal allocation of a fixed character budget between the beginning and end of a key depends on the statistical structure of the key distribution**.
+The main empirical finding is more specific: **the preferred allocation of a fixed character budget between the beginning and end of a key depends on both the statistical structure of the key distribution and the objective being optimized**.
 
-For the tested English corpus, balanced HPSS is not optimal at larger `k`, and increasingly prefix-heavy allocations perform better. For the tested ASCII domain sample, prefix-only selection is consistently best. For random ASCII strings, allocation matters little once enough characters are retained.
+For the tested English corpus, balanced HPSS is not optimal at larger `k`, and increasingly prefix-heavy allocations perform better. For the tested ASCII domain sample, prefix-only selection is consistently best. For random ASCII strings, allocation matters little once enough characters are retained. The ratio experiment further shows that collision metrics and speed can favor different allocations.
 
-These findings motivate treating HPSS as a representation heuristic whose parameters should be evaluated against the intended key distribution, rather than as a universally optimal hashing construction.
+These findings motivate treating HPSS as a representation heuristic whose parameters should be evaluated against the intended key distribution and objective, rather than as a universally optimal hashing construction.
 
 ---
 
 ## 8. Reproducibility
 
-The repository contains the implementation, tests, pinned dataset provenance, benchmark scripts, metadata, and CI configuration used to produce the reported results.
+The repository contains the implementation, tests, pinned dataset provenance, benchmark scripts, ratio experiment, objective-specific analysis, metadata, and CI configuration used to produce the reported results.
 
 The recommended validation command is:
 
