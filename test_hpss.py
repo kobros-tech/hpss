@@ -6,6 +6,7 @@ from hpss_hash import (
     HPSSHasher,
     hpss_positional_hash,
     select_hpss,
+    select_hpss_ratio,
     select_middle,
     select_prefix,
     select_suffix,
@@ -28,10 +29,73 @@ def test_short_words_are_not_truncated():
         assert selector("abc", 5) == "abc"
 
 
+def test_ratio_selector_short_words_are_not_truncated():
+    for alpha in (0.0, 0.25, 0.5, 0.76, 1.0):
+        assert select_hpss_ratio("abc", 10, alpha) == "abc"
+
+
 def test_hpss_has_exact_length_when_long_enough():
     for k in range(0, 13):
         result = select_hpss("abcdefghijklmnopqrstuvwxyz", k)
         assert len(result) == k
+
+
+def test_ratio_selector_has_exact_effective_length():
+    word = "abcdefghijklmnopqrstuvwxyz"
+    for k in range(0, 13):
+        for alpha in (0.0, 0.25, 0.5, 0.76, 1.0):
+            result = select_hpss_ratio(word, k, alpha)
+            assert len(result) == min(k, len(word))
+
+
+def test_ratio_selector_examples():
+    assert select_hpss_ratio("abcdefgh", 4, 0.25) == "a" + "bcd"[-3:]
+    assert select_hpss_ratio("abcdefghij", 5, 0.76) == "abcd" + "j"
+    assert select_hpss_ratio("abcdefghij", 6, 0.76) == "abcde" + "j"
+    assert select_hpss_ratio("abcdefghij", 8, 0.75) == "abcdef" + "gh"
+
+
+def test_ratio_selector_extremes():
+    word = "abcdefghij"
+    assert select_hpss_ratio(word, 5, 0.0) == "fghij"
+    assert select_hpss_ratio(word, 5, 1.0) == "abcde"
+
+
+def test_ratio_selector_half_up_rounding():
+    # 0.5 * 5 + 0.5 = 3.0, so half-up gives 3 prefix characters.
+    assert select_hpss_ratio("abcdefghij", 5, 0.5) == "abc" + "ij"
+
+
+def test_ratio_selector_k_zero():
+    assert select_hpss_ratio("abcdefghij", 0, 0.76) == ""
+
+
+def test_ratio_selector_rejects_invalid_alpha():
+    for alpha in (-0.01, 1.01):
+        with pytest.raises(ValueError):
+            select_hpss_ratio("abcdefgh", 5, alpha)
+
+
+def test_ratio_selector_rejects_negative_k():
+    with pytest.raises(ValueError):
+        select_hpss_ratio("abcdefgh", -1, 0.76)
+
+
+def test_hpss_has_expected_legacy_balanced_behavior():
+    word = "abcdefghij"
+    assert select_hpss(word, 5) == select_hpss_ratio(word, 5, 0.5)
+    assert select_hpss(word, 6) == select_hpss_ratio(word, 6, 0.5)
+
+
+def test_ratio_hasher_matches_selector():
+    hasher = HPSSHasher(k=10, alpha=0.76)
+    representation = select_hpss_ratio("abcdefghij", 10, 0.76)
+    assert hasher("abcdefghij") == hpss_positional_hash(representation)
+
+
+def test_ratio_hasher_rejects_non_hpss_strategy():
+    with pytest.raises(ValueError):
+        HPSSHasher(k=5, strategy="PREFIX", alpha=0.76)
 
 
 def test_unicode_encoder_is_injective_on_small_exhaustive_set():
