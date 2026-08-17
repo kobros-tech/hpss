@@ -71,3 +71,35 @@ jobs:
         run: |
           echo '--- MULTI_DATASET_ALLOCATION_ABLATION.csv ---'
           cat MULTI_DATASET_ALLOCATION_ABLATION.csv
+
+      - name: Run ratio allocation experiment
+        run: |
+          python research_ratio_experiment.py \
+            --input dictionaries/words.txt \
+            --output results/ratio_experiment.csv \
+            --k-min 2 \
+            --k-max 12 \
+            --repeats 7
+
+      - name: Analyze ratio allocation experiment
+        run: python analyze_ratio_experiment.py results/ratio_experiment.csv --output-dir results
+
+      - name: Publish ratio experiment results
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-ratio-experiment-results
+          path: |
+            results/ratio_experiment.csv
+            results/ratio_collision_optima.csv
+            results/ratio_speed_optima.csv
+            results/ratio_pareto_frontier.csv
+          if-no-files-found: error
+
+      - name: Print ratio experiment summary
+        run: |
+          echo '--- collision optima ---'
+          cat results/ratio_collision_optima.csv
+          echo '--- speed optima ---'
+          cat results/ratio_speed_optima.csv
+          echo '--- Pareto frontier ---'
+          cat results/ratio_pareto_frontier.csv
