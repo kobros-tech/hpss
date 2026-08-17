@@ -1,21 +1,22 @@
 cff-version: 1.2.0
-title: "HPSS: Hybrid Prefix-Suffix Selection Hashing"
+title: "HPSS: Hybrid Prefix-Suffix Selection for Compact Textual Key Representations"
 type: software
 authors:
-  - family-names: Alkobrosly
-    given-names: Mohamed
-    affiliation: "KOBROS-TECH LTD"
+  - family-names: Alkobrosli
+    given-names: Mohamed Moustafa
+    affiliation: "Independent Researcher"
 repository-code: "https://github.com/kobros-tech/hpss"
 license: MIT
 version: "0.1.0"
-date-released: 2026-08-16
+date-released: 2026-08-17
 abstract: >-
-  Experimental study of Hybrid Prefix-Suffix Selection for compact textual
-  representations, with explicit separation of representation collisions from
-  collisions introduced by downstream hash functions.
+  Research software for studying compact textual key representations created
+  by prefix/suffix character selection, with reproducible collision analysis,
+  exhaustive allocation ablations, and benchmark tooling for ASCII-oriented
+  textual data.
 keywords:
   - hashing
-  - string hashing
+  - string representations
   - collision analysis
-  - data structures
+  - prefix-suffix selection
   - reproducible research
