@@ -52,7 +52,7 @@ def test_ratio_selector_examples():
     assert select_hpss_ratio("abcdefgh", 4, 0.25) == "a" + "fgh"
     assert select_hpss_ratio("abcdefghij", 5, 0.76) == "abcd" + "j"
     assert select_hpss_ratio("abcdefghij", 6, 0.76) == "abcde" + "j"
-    assert select_hpss_ratio("abcdefghij", 8, 0.75) == "abcdef" + "gh"
+    assert select_hpss_ratio("abcdefghij", 8, 0.75) == "abcdef" + "ij"
 
 
 def test_ratio_selector_extremes():
