@@ -3,14 +3,13 @@ title: "HPSS: Hybrid Prefix-Suffix Selection for Compact Textual Key Representat
 authors:
   - name: Mohamed Alkobrosly
     affiliation: Independent Researcher
-    orcid: ""
 date: 2026-08-17
 bibliography: paper.bib
 ---
 
 # Summary
 
-HPSS (Hybrid Prefix-Suffix Selection) is a small, reproducible research software package for studying compact representations of textual keys. The software selects a fixed number of characters from the beginning and end of an input string and can subsequently encode or hash the resulting representation. The project is designed to answer a practical research question: when a textual key must be reduced to a fixed character budget, how should that budget be allocated between the front and back of the key?
+HPSS (Hybrid Prefix-Suffix Selection) is a reproducible research software package for studying compact representations of textual keys. The software selects a fixed number of characters from the beginning and end of an input string and can subsequently encode or hash the resulting representation. The project asks a practical research question: when a textual key must be reduced to a fixed character budget, how should that budget be allocated between the front and back of the key?
 
 The package provides the selector, positional encoder, established hash-function baselines, deterministic benchmark tooling, dataset provenance, collision analysis, and automated tests. A central design feature is the explicit separation of **representation collisions**—information loss caused by selection—from collisions introduced by a downstream hash function.
 
@@ -24,7 +23,7 @@ The software is deliberately not presented as a replacement for established fixe
 
 # State of the Field
 
-Prefix, suffix, substring, truncation, and fingerprinting techniques are common ways of constructing compact string-derived keys. Established non-cryptographic hash functions such as FNV-1a, MurmurHash3, and xxHash provide efficient fixed-width mappings, but they do not recover information discarded before hashing. HPSS therefore complements rather than replaces such functions: the software makes the pre-hash representation an explicit experimental object and compares it with simple positional baselines.
+Prefix, suffix, substring, truncation, and fingerprinting techniques are common ways of constructing compact string-derived keys. Established non-cryptographic hash functions such as FNV-1a [@fnv], MurmurHash3 [@murmurhash3], and xxHash [@xxhash] provide efficient fixed-width mappings, but they do not recover information discarded before hashing. HPSS therefore complements rather than replaces such functions: the software makes the pre-hash representation an explicit experimental object and compares it with simple positional baselines.
 
 The scholarly contribution of the package is the reproducible experimental framework around the allocation problem. It exhaustively evaluates every front/back allocation for a fixed character budget and reports representation-level collision statistics separately from downstream hashing. This makes it possible to test whether an apparent hashing improvement is actually caused by the selected representation.
 
@@ -36,7 +35,7 @@ For a key `x`, a budget `k`, and a front allocation `p`, the general representat
 
 The implementation handles short inputs explicitly and provides the balanced HPSS strategy as a particular member of this family. The positional encoder maps the selected character sequence to an arbitrary-precision integer without deliberately introducing collisions between distinct selected sequences. Established hash functions can then be applied independently for comparison.
 
-The benchmark architecture keeps dataset loading and normalization in a shared module so that the main benchmark and allocation experiments use the same records. Research datasets are obtained from pinned upstream sources rather than silently changing copies. Deterministic synthetic controls use a fixed seed.
+The benchmark architecture keeps dataset loading and normalization in a shared module so that the main benchmark and allocation experiments use the same records. Research datasets are obtained from pinned upstream sources rather than silently changing copies. The English-word source is derived from the `dwyl/english-words` repository [@dwylEnglishWords], while the domain control is derived from the Estonian Internet Foundation domain dataset [@estonianDomains]. Deterministic synthetic controls use a fixed seed.
 
 The repository includes automated unit tests and GitHub Actions workflows for validation and benchmark execution. Research outputs are written as machine-readable CSV files and benchmark metadata records the relevant dataset and execution information.
 
@@ -52,4 +51,4 @@ Generative AI tools were used during development to assist with code review, ref
 
 # References
 
-See `paper.bib` for the software and dataset references used by this article.
+The references below identify the principal software and datasets used by the package and article. The repository also contains detailed provenance information for benchmark inputs.
