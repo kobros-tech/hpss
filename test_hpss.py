@@ -49,7 +49,7 @@ def test_ratio_selector_has_exact_effective_length():
 
 
 def test_ratio_selector_examples():
-    assert select_hpss_ratio("abcdefgh", 4, 0.25) == "a" + "bcd"[-3:]
+    assert select_hpss_ratio("abcdefgh", 4, 0.25) == "a" + "fgh"
     assert select_hpss_ratio("abcdefghij", 5, 0.76) == "abcd" + "j"
     assert select_hpss_ratio("abcdefghij", 6, 0.76) == "abcde" + "j"
     assert select_hpss_ratio("abcdefghij", 8, 0.75) == "abcdef" + "gh"
@@ -83,8 +83,8 @@ def test_ratio_selector_rejects_negative_k():
 
 def test_hpss_has_expected_legacy_balanced_behavior():
     word = "abcdefghij"
-    assert select_hpss(word, 5) == select_hpss_ratio(word, 5, 0.5)
-    assert select_hpss(word, 6) == select_hpss_ratio(word, 6, 0.5)
+    assert select_hpss(word, 5) == "ab" + "hij"
+    assert select_hpss(word, 6) == "abc" + "hij"
 
 
 def test_ratio_hasher_matches_selector():
