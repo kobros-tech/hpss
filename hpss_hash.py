@@ -2,7 +2,7 @@
 
 The research implementation separates two operations:
 
-1. selection: retain k characters from the input key;
+1. selection: retain characters from the input key;
 2. encoding: map the selected representation to an integer.
 
 The default positional encoder is injective over finite Unicode strings
@@ -13,6 +13,7 @@ not a fixed-width 64-bit hash function.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import floor
 from typing import Callable
 
 UNICODE_BASE = 0x110000
@@ -99,26 +100,62 @@ def select_prefix(word: str, k: int) -> str:
 def select_suffix(word: str, k: int) -> str:
     if k < 0:
         raise ValueError("k must be non-negative")
-    return word[-k:] if len(word) > k else word
+    return word[-k:] if k else ""
 
 
 def select_hpss(word: str, k: int) -> str:
-    """Select k characters from both ends.
+    """Select up to k characters using the original balanced HPSS rule.
 
     Even k: k/2 from the front and k/2 from the back.
     Odd k: floor(k/2) from the front and ceil(k/2) from the back.
 
     Thus k=5 means 2 characters from the front and 3 from the back.
+    Short words are returned unchanged. This legacy behavior is intentionally
+    preserved so that the completed research benchmarks remain reproducible.
     """
     if k < 0:
         raise ValueError("k must be non-negative")
-    if len(word) <= k:
+    if k == 0 or not word:
+        return "" if k == 0 else word
+    effective_k = min(k, len(word))
+    if effective_k == len(word):
         return word
-    if k == 0:
-        return ""
-    front = k // 2
-    back = k - front
-    return word[:front] + word[-back:]
+    prefix = effective_k // 2
+    suffix = effective_k - prefix
+    return word[:prefix] + word[-suffix:]
+
+
+def select_hpss_ratio(word: str, k: int, alpha: float) -> str:
+    """Select up to k characters using a prefix allocation factor.
+
+    ``alpha`` is the fraction of the effective character budget allocated to
+    the prefix. It must be in [0, 1]. The effective budget is
+    ``min(k, len(word))``, so a short word is never truncated. Allocation is
+    rounded deterministically using round-half-up:
+
+        prefix = floor(alpha * effective_k + 0.5)
+        suffix = effective_k - prefix
+
+    Therefore alpha=0 selects the suffix only and alpha=1 selects the prefix
+    only. Unlike the legacy balanced selector, alpha=0.5 uses half-up rounding
+    for odd budgets, so k=5 produces 3 prefix and 2 suffix characters.
+    """
+    if k < 0:
+        raise ValueError("k must be non-negative")
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError("alpha must be between 0.0 and 1.0")
+    if k == 0 or not word:
+        return "" if k == 0 else word
+
+    effective_k = min(k, len(word))
+    if effective_k == len(word):
+        return word
+
+    prefix = floor(alpha * effective_k + 0.5)
+    suffix = effective_k - prefix
+    prefix_part = word[:prefix]
+    suffix_part = word[-suffix:] if suffix else ""
+    return prefix_part + suffix_part
 
 
 def select_middle(word: str, k: int) -> str:
@@ -181,15 +218,24 @@ class HPSSHasher:
     k: int = 8
     strategy: str = "HPSS"
     alphabet: str | None = None
+    alpha: float | None = None
 
     def __post_init__(self) -> None:
         if self.k < 0:
             raise ValueError("k must be non-negative")
         if self.strategy not in SELECTION_STRATEGIES:
             raise ValueError(f"unknown strategy: {self.strategy}")
+        if self.alpha is not None and not 0.0 <= self.alpha <= 1.0:
+            raise ValueError("alpha must be between 0.0 and 1.0")
+        if self.alpha is not None and self.strategy != "HPSS":
+            raise ValueError("alpha can only be used with strategy='HPSS'")
 
     def __call__(self, word: str) -> int:
-        representation = SELECTION_STRATEGIES[self.strategy](word.lower(), self.k)
+        normalized = word.lower()
+        if self.alpha is None:
+            representation = SELECTION_STRATEGIES[self.strategy](normalized, self.k)
+        else:
+            representation = select_hpss_ratio(normalized, self.k, self.alpha)
         return hpss_positional_hash(representation, self.alphabet)
 
     def table_index(self, word: str, table_size: int) -> int:
