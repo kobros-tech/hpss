@@ -6,6 +6,17 @@ Contributions are welcome, especially improvements to the selector, benchmark me
 
 Please search existing issues and describe the problem or proposed improvement clearly. For benchmark changes, include the dataset, normalization rules, parameters, and environment needed to reproduce the result.
 
+## Development setup
+
+Use Python 3.11 or newer:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+pytest -q
+```
+
 ## Pull requests
 
 1. Keep changes focused and explain the research or software motivation.
@@ -13,6 +24,7 @@ Please search existing issues and describe the problem or proposed improvement c
 3. Keep benchmark methodology reproducible and avoid changing datasets or normalization silently.
 4. Run the test suite before submitting the pull request.
 5. Document externally sourced datasets and pin their provenance when practical.
+6. Update the changelog when a change is meaningful to users or reproducibility.
 
 ## Research contributions
 
