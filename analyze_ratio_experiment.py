@@ -1,6 +1,7 @@
 """Summarize ratio-allocation experiment results.
 
-Produces collision-optimal, speed-optimal, and Pareto-frontier CSV files.
+Produces separate optima for each collision metric, the speed optimum, and a
+Pareto frontier based on collision pairs versus throughput.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ def write_rows(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 def pareto_frontier(rows: list[dict[str, str]]) -> list[dict[str, str]]:
-    # Minimize collision pairs and maximize throughput.
+    """Minimize collision pairs and maximize throughput."""
     frontier = []
     for candidate in rows:
         cp = int(candidate["collision_pairs"])
@@ -42,7 +43,24 @@ def pareto_frontier(rows: list[dict[str, str]]) -> list[dict[str, str]]:
         )
         if not dominated:
             frontier.append(candidate)
-    return sorted(frontier, key=lambda row: (int(row["k"]), int(row["collision_pairs"]), -float(row["throughput_words_per_second"])))
+    return sorted(
+        frontier,
+        key=lambda row: (
+            int(row["k"]),
+            int(row["collision_pairs"]),
+            -float(row["throughput_words_per_second"]),
+        ),
+    )
+
+
+def choose_optima(group: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+    return {
+        "unique": max(group, key=lambda row: (int(row["unique"]), -int(row["collision_pairs"]))),
+        "collision_entries": min(group, key=lambda row: (int(row["collision_entries"]), int(row["collision_pairs"]))),
+        "collision_pairs": min(group, key=lambda row: (int(row["collision_pairs"]), int(row["collision_entries"]))),
+        "max_group": min(group, key=lambda row: (int(row["max_group"]), int(row["collision_pairs"]))),
+        "speed": max(group, key=lambda row: (float(row["throughput_words_per_second"]), -int(row["collision_pairs"]))),
+    }
 
 
 def main() -> None:
@@ -56,27 +74,35 @@ def main() -> None:
     for row in rows:
         by_k.setdefault(int(row["k"]), []).append(row)
 
-    collision_optima = []
-    speed_optima = []
+    outputs = {
+        "unique": [],
+        "collision_entries": [],
+        "collision_pairs": [],
+        "max_group": [],
+        "speed": [],
+    }
     pareto = []
 
     for k, group in sorted(by_k.items()):
-        best_collision = min(group, key=lambda row: (int(row["collision_pairs"]), int(row["collision_entries"]), -int(row["unique"])))
-        best_speed = max(group, key=lambda row: (float(row["throughput_words_per_second"]), -int(row["collision_pairs"])))
-        collision_optima.append(best_collision)
-        speed_optima.append(best_speed)
+        optima = choose_optima(group)
+        for metric, row in optima.items():
+            outputs[metric].append(row)
         pareto.extend(pareto_frontier(group))
 
-    write_rows(args.output_dir / "ratio_collision_optima.csv", collision_optima)
-    write_rows(args.output_dir / "ratio_speed_optima.csv", speed_optima)
+    for metric, rows_out in outputs.items():
+        write_rows(args.output_dir / f"ratio_{metric}_optima.csv", rows_out)
     write_rows(args.output_dir / "ratio_pareto_frontier.csv", pareto)
 
-    print("--- collision optima ---")
-    for row in collision_optima:
-        print(f"k={row['k']} alpha={row['alpha']} pairs={row['collision_pairs']} unique={row['unique']}")
-    print("--- speed optima ---")
-    for row in speed_optima:
-        print(f"k={row['k']} alpha={row['alpha']} throughput={row['throughput_words_per_second']}")
+    print("--- optima by metric ---")
+    for metric, rows_out in outputs.items():
+        print(f"[{metric}]")
+        for row in rows_out:
+            print(
+                f"k={row['k']} front={row['front']} suffix={row['suffix']} "
+                f"alpha={row['alpha']} unique={row['unique']} "
+                f"entries={row['collision_entries']} pairs={row['collision_pairs']} "
+                f"max_group={row['max_group']} speed={row['throughput_words_per_second']}"
+            )
     print(f"Pareto configurations: {len(pareto)}")
 
 
