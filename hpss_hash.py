@@ -104,15 +104,25 @@ def select_suffix(word: str, k: int) -> str:
 
 
 def select_hpss(word: str, k: int) -> str:
-    """Select k characters using the original balanced HPSS rule.
+    """Select up to k characters using the original balanced HPSS rule.
 
     Even k: k/2 from the front and k/2 from the back.
     Odd k: floor(k/2) from the front and ceil(k/2) from the back.
 
     Thus k=5 means 2 characters from the front and 3 from the back.
-    Short words are returned unchanged.
+    Short words are returned unchanged. This legacy behavior is intentionally
+    preserved so that the completed research benchmarks remain reproducible.
     """
-    return select_hpss_ratio(word, k, 0.5)
+    if k < 0:
+        raise ValueError("k must be non-negative")
+    if k == 0 or not word:
+        return "" if k == 0 else word
+    effective_k = min(k, len(word))
+    if effective_k == len(word):
+        return word
+    prefix = effective_k // 2
+    suffix = effective_k - prefix
+    return word[:prefix] + word[-suffix:]
 
 
 def select_hpss_ratio(word: str, k: int, alpha: float) -> str:
@@ -126,8 +136,9 @@ def select_hpss_ratio(word: str, k: int, alpha: float) -> str:
         prefix = floor(alpha * effective_k + 0.5)
         suffix = effective_k - prefix
 
-    Therefore alpha=0 selects the suffix only, alpha=1 selects the prefix
-    only, and alpha=0.5 reproduces the balanced HPSS rule.
+    Therefore alpha=0 selects the suffix only and alpha=1 selects the prefix
+    only. Unlike the legacy balanced selector, alpha=0.5 uses half-up rounding
+    for odd budgets, so k=5 produces 3 prefix and 2 suffix characters.
     """
     if k < 0:
         raise ValueError("k must be non-negative")
