@@ -90,16 +90,23 @@ jobs:
           name: hpss-ratio-experiment-results
           path: |
             results/ratio_experiment.csv
-            results/ratio_collision_optima.csv
+            results/ratio_unique_optima.csv
+            results/ratio_collision_entries_optima.csv
+            results/ratio_collision_pairs_optima.csv
+            results/ratio_max_group_optima.csv
             results/ratio_speed_optima.csv
             results/ratio_pareto_frontier.csv
           if-no-files-found: error
 
       - name: Print ratio experiment summary
         run: |
-          echo '--- collision optima ---'
-          cat results/ratio_collision_optima.csv
-          echo '--- speed optima ---'
-          cat results/ratio_speed_optima.csv
-          echo '--- Pareto frontier ---'
-          cat results/ratio_pareto_frontier.csv
+          for file in \
+            ratio_unique_optima.csv \
+            ratio_collision_entries_optima.csv \
+            ratio_collision_pairs_optima.csv \
+            ratio_max_group_optima.csv \
+            ratio_speed_optima.csv \
+            ratio_pareto_frontier.csv; do
+            echo "--- results/$file ---"
+            cat "results/$file"
+          done
