@@ -87,16 +87,50 @@ The software is intended as a research tool and experimental reference implement
 
 ## 3. State of the Field
 
-The final manuscript should position HPSS against at least four neighboring areas:
+### 3.1 Established hashing and fingerprinting
 
-1. **General-purpose non-cryptographic hashing** — e.g. FNV-1a, MurmurHash-family functions, and xxHash, which hash complete inputs into fixed-width outputs.
-2. **String fingerprints and compact identifiers** — methods that deliberately reduce textual inputs before storage, indexing, or comparison.
-3. **Substring/prefix/suffix indexing and string-search techniques** — methods that exploit positional information from textual keys.
-4. **Collision-aware representation and hashing studies** — work that evaluates distinguishability before and after hashing.
+Non-cryptographic hashing is a mature field. FNV, MurmurHash-family functions, and xxHash provide established fixed-width hashing approaches and are useful reference implementations for the present experiments. Their role here is as downstream encoders/hashes, not as methods that HPSS claims to replace.
 
-The final paper should cite the primary references for the established hash functions and the most closely related representation/indexing methods, then explain the narrower contribution of HPSS: an explicit, reproducible study of **boundary allocation before hashing**, including exhaustive allocation ablation and separate collision objectives.
+### 3.2 Compact string representations
 
-This section should be completed with verified scholarly and software references before JOSS submission. It should not claim novelty merely because prefix/suffix selection itself is simple; the novelty claim should focus on the defined HPSS formulation, experimental decomposition, allocation analysis, and reproducible research software where supported by the literature review.
+Reducing a string to a smaller fingerprint, signature, substring, or other compact representation is also established. Such methods trade information content against storage, comparison, or indexing cost. This literature is directly relevant because HPSS introduces information loss **before** downstream hashing.
+
+### 3.3 Workload-dependent fingerprints
+
+Recent work on workload-optimized string fingerprints is particularly relevant to HPSS because it treats fingerprint design as dependent on the statistical properties of the workload rather than assuming a single representation is best for all inputs. This provides an important precedent for evaluating allocation choices empirically rather than presenting a fixed alpha as universally optimal.
+
+One relevant recent example is **Instance-Optimized String Fingerprinting**, which studies learned/workload-specific choices for compact string fingerprints. The conceptual connection is not that the method is equivalent to HPSS, but that both motivate evaluating representation quality against the actual input distribution and application objective.
+
+### 3.4 Prefix/suffix and positional string techniques
+
+Prefix and suffix information are widely used in string indexing, search, deduplication, URL/domain processing, and compact identifier systems. These applications establish that boundary characters can carry useful information, but they do not by themselves establish that a particular fixed-budget prefix/suffix allocation is optimal for the datasets studied here.
+
+### 3.5 Position of the present study
+
+The present work should therefore make a **narrow** contribution claim. The paper does not claim to invent the general idea of using prefixes, suffixes, fingerprints, or hashing. Instead, it studies a specific experimental question:
+
+> Given a fixed character budget, how does every possible allocation between the prefix and suffix affect representation collisions, downstream hash collisions, and selector speed across different textual workloads?
+
+The experimental design adds three elements that should be evaluated explicitly against prior work:
+
+1. exhaustive allocation of the fixed boundary budget;
+2. separation of representation collisions from downstream hash collisions;
+3. simultaneous analysis of several collision objectives and throughput.
+
+A final literature review should verify these distinctions before making any formal novelty claim.
+
+### 3.6 References to verify before submission
+
+The final manuscript should replace this subsection with complete bibliographic references to:
+
+- the original FNV specification/reference;
+- the MurmurHash3 reference/implementation;
+- the xxHash specification/reference;
+- the closest scholarly work on compact string fingerprints;
+- the closest work on prefix/suffix or substring-based textual representations;
+- **Instance-Optimized String Fingerprinting** and any subsequent peer-reviewed or archival version available at submission time.
+
+The paper should distinguish peer-reviewed literature from software documentation, specifications, preprints, and web resources. No novelty claim should rely solely on an absence of search results.
 
 ---
 

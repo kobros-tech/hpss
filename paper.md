@@ -1,7 +1,13 @@
 ---
 title: "HPSS: Hybrid Prefix-Suffix Selection for Compact Textual Key Representations"
+tags:
+  - Python
+  - hashing
+  - string representations
+  - collision analysis
+  - reproducible research
 authors:
-  - name: Mohamed Alkobrosly
+  - name: Mohamed Alkobrosli
     affiliation: Independent Researcher
 date: 17 August 2026
 bibliography: paper.bib
@@ -29,6 +35,8 @@ FNV-1a [@fnv], MurmurHash3 [@murmurhash3], and xxHash [@xxhash] are established 
 
 General-purpose hash libraries are appropriate when the complete input should be hashed. They do not, by design, provide an experimental framework for asking how much information is lost by retaining selected positions before hashing. HPSS therefore follows a **build rather than contribute** rationale: the scholarly software contribution is the integrated selector, collision taxonomy, exhaustive allocation analysis, shared data pipeline, reproducible benchmark protocol, and tests that make this specific research question directly reproducible.
 
+Compact, workload-dependent string representations are also studied in the database-systems literature. Stoian et al. [@stoian2025instanceoptimized] instance-optimize compact string fingerprints for a specific workload and data distribution using mixed-integer optimization, rather than assuming a single fixed representation performs best across all inputs. HPSS shares this premise—that the value of a compact representation depends on the statistical structure of the underlying key population—but studies a different, complementary question: given a fixed prefix/suffix character budget, which boundary allocation minimizes representation collisions, and how does that allocation interact with a downstream hash. HPSS does not claim equivalence with instance-optimized fingerprints; the connection is that both motivate evaluating compact representations empirically against the target workload rather than by assumption.
+
 The project also follows established software-citation practice [@joss] and provides citation metadata for reuse.
 
 # Software design
@@ -41,7 +49,7 @@ The balanced HPSS strategy is one member of this family, using $p=\lfloor k/2\rf
 
 The software separates four stages: dataset normalization, character selection, representation-level collision analysis, and optional downstream hashing. This architecture is important because a collision introduced by selection cannot be repaired by a later hash function. The positional encoder uses an arbitrary-precision integer representation and is injective over finite selected strings; it is therefore treated as an encoding rather than as a fixed-width hash.
 
-Research datasets are loaded through a shared canonical module so that benchmark programs use identical normalization and deduplication rules. External datasets are downloaded from pinned upstream sources, while the synthetic control uses a fixed random seed. Machine-readable benchmark outputs and metadata are retained for reproducibility.
+Research datasets are loaded through a shared canonical module so that benchmark programs use identical normalization and deduplication rules. External datasets—the `dwyl/english-words` lexical corpus [@dwylEnglishWords] and the Estonian Internet Foundation domain sample [@estonianDomains]—are downloaded from pinned upstream sources, while the synthetic control uses a fixed random seed. Machine-readable benchmark outputs and metadata are retained for reproducibility.
 
 The repository includes automated unit tests and GitHub Actions for both software validation and research-benchmark execution. The implementation is intentionally small and dependency-light: the reference hash functions are optional research baselines, while the core selection and encoding logic uses the Python standard library.
 
