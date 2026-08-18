@@ -200,24 +200,39 @@ The research workflows also download the pinned external datasets before running
 .
 ├── hpss_hash.py
 ├── benchmark.py
+├── research_benchmark.py
 ├── research_datasets.py
 ├── research_experiments.py
 ├── research_ratio_experiment.py
 ├── analyze_ratio_experiment.py
+├── allocation_ablation_benchmark.py
 ├── multi_dataset_allocation_benchmark.py
 ├── download_research_datasets.py
 ├── test_hpss.py
+├── test_research_datasets.py
 ├── test_research_experiments.py
 ├── tests/
+│   └── test_ratio_experiment.py
 ├── dictionaries/
 │   ├── words.txt
 │   ├── english_words_source.txt
 │   └── estonian_domains_source.txt
+├── .github/
+│   └── workflows/
+│       ├── tests.yml
+│       └── benchmark.yml
 ├── RESULTS_fresh.csv
 ├── RESULTS_METADATA.txt
 ├── METHODS.md
 ├── PAPER_OUTLINE.md
+├── paper.md
+├── paper.bib
 ├── CITATION.cff
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+├── SUPPORT.md
+├── CHANGELOG.md
 └── LICENSE
 ```
 
