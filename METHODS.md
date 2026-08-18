@@ -4,7 +4,7 @@
 
 This study evaluates **Hybrid Prefix-Suffix Selection (HPSS)** as a compact textual representation strategy. The central question is not whether a particular hash function is universally superior, but how much distinguishability is retained when a fixed number of characters is selected from different positions in a key.
 
-The final experiment also asks whether the balanced HPSS allocation is actually optimal, whether a generalized ratio formulation is useful, and whether the answer depends on the statistical structure of the input keys and on the metric being optimized.
+The study tests whether the balanced HPSS allocation is optimal, whether the generalized ratio formulation is useful as a parameterization of the allocation family, and whether the preferred allocation depends on the statistical structure of the input keys and on the metric being optimized.
 
 ## 2. Experimental pipeline
 
