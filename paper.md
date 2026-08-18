@@ -7,7 +7,7 @@ tags:
   - collision analysis
   - reproducible research
 authors:
-  - name: Mohamed Alkobrosli
+  - name: Mohamed Moustafa Alkobrosli
     affiliation: Independent Researcher
 date: 17 August 2026
 bibliography: paper.bib
