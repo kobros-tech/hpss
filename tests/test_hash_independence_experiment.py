@@ -6,9 +6,8 @@ def test_hash_functions_have_expected_families():
     assert {"HPSS_POSITIONAL", "SHA256", "SHA3_256"} <= HASH_FUNCTIONS.keys()
 
 
-def test_selections_include_no_selection_and_controls():
-    assert SELECTIONS["NONE"] is None
-    assert {"PREFIX", "SUFFIX", "HPSS", "MIDDLE"} <= SELECTIONS.keys()
+def test_selections_are_the_experiment_controls():
+    assert SELECTIONS == {"NONE": None, "HPSS": SELECTIONS["HPSS"]}
 
 
 def test_collision_stats():
@@ -30,6 +29,15 @@ def test_run_keeps_selection_identical_across_hashes():
 
     expected_rows = len(SELECTIONS) * len(HASH_FUNCTIONS)
     assert len(rows) == expected_rows
+
+
+def test_hash_collisions_match_representation_collisions():
+    rows = run(["alpha", "alpine", "beta"], [4], repetitions=1)
+    for row in rows:
+        assert row["hash_unique"] == row["representation_unique"]
+        assert row["hash_collision_entries"] == row["representation_collision_entries"]
+        assert row["hash_collision_pairs"] == row["representation_collision_pairs"]
+        assert row["hash_max_group"] == row["representation_max_group"]
 
 
 def test_no_selection_is_independent_of_k():
