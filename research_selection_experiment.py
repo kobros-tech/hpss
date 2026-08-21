@@ -1,17 +1,16 @@
 """Selection-allocation experiment with a fixed downstream hash.
 
 This experiment isolates the effect of prefix/suffix selection by keeping the
-hash function fixed (XXHash64).  The ratio parameter ``alpha`` controls the
+hash function fixed (XXHash64). The ratio parameter ``alpha`` controls the
 prefix allocation under the existing deterministic round-half-up rule:
 
 * alpha=0.0 -> suffix only;
 * alpha=0.5 -> balanced prefix/suffix allocation;
 * alpha=1.0 -> prefix only.
 
-A no-selection baseline is included for every k.  The experiment records both
-representation-level and hash-level collision metrics, plus end-to-end
-selection+hash timing.  It intentionally does not compare different hash
-functions; that is a later independence experiment.
+A no-selection baseline is included for every k. The experiment records both
+representation-level and hash-level collision metrics, selection timing,
+hash timing, and end-to-end pipeline timing.
 
 Usage:
     python research_selection_experiment.py \
@@ -34,7 +33,6 @@ from hpss_hash import hash_xxhash64, select_hpss_ratio
 from research_datasets import load_english_words
 
 DEFAULT_ALPHAS = tuple(i / 10 for i in range(11))
-DEFAULT_K_VALUES = tuple(range(2, 13))
 
 
 def collision_stats(values: list[object]) -> dict[str, int | float]:
@@ -92,21 +90,37 @@ def benchmark_pipeline(
 
     representations = [select_representation(word, k, alpha) for word in words]
     representation_bytes = [representation.encode("utf-8") for representation in representations]
-
     representation_stats = collision_stats(representations)
-    timings: list[float] = []
+
+    selection_timings: list[float] = []
+    hash_timings: list[float] = []
+    pipeline_timings: list[float] = []
     hash_values: list[int] = []
 
     for _ in range(repeats):
         start = time.perf_counter()
-        values = [hash_fn(data) for data in representation_bytes]
-        elapsed = time.perf_counter() - start
-        timings.append(elapsed)
+        timed_representations = [select_representation(word, k, alpha) for word in words]
+        selection_timings.append(time.perf_counter() - start)
+
+        timed_bytes = [representation.encode("utf-8") for representation in timed_representations]
+        start = time.perf_counter()
+        values = [hash_fn(data) for data in timed_bytes]
+        hash_timings.append(time.perf_counter() - start)
         hash_values = values
 
+        start = time.perf_counter()
+        pipeline_values = [
+            hash_fn(select_representation(word, k, alpha).encode("utf-8"))
+            for word in words
+        ]
+        pipeline_timings.append(time.perf_counter() - start)
+        hash_values = pipeline_values
+
     hash_stats = collision_stats(hash_values)
-    median_seconds = statistics.median(timings)
-    throughput = len(words) / median_seconds if median_seconds else float("inf")
+    selection_seconds = statistics.median(selection_timings)
+    hash_seconds = statistics.median(hash_timings)
+    pipeline_seconds = statistics.median(pipeline_timings)
+    throughput = len(words) / pipeline_seconds if pipeline_seconds else float("inf")
 
     prefix = None if alpha is None else ratio_prefix_count(k, alpha)
     suffix = None if prefix is None else k - prefix
@@ -129,7 +143,9 @@ def benchmark_pipeline(
         "hash_collision_rate": hash_stats["collision_rate"],
         "hash_collision_pairs": hash_stats["collision_pairs"],
         "hash_max_group": hash_stats["max_group"],
-        "median_seconds": median_seconds,
+        "selection_median_seconds": selection_seconds,
+        "hash_median_seconds": hash_seconds,
+        "median_seconds": pipeline_seconds,
         "hashes_per_second": throughput,
     }
 
