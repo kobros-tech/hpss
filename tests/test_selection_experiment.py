@@ -13,13 +13,13 @@ def test_ratio_extremes_match_prefix_and_suffix():
 
 
 def test_ratio_half_is_balanced_for_even_k():
-    assert select_representation("abcdefgh", 6, 0.5) == "abcgh"
+    assert select_representation("abcdefgh", 6, 0.5) == "abcfgh"
     assert ratio_prefix_count(6, 0.5) == 3
 
 
 def test_ratio_uses_round_half_up_for_odd_k():
     assert ratio_prefix_count(5, 0.5) == 3
-    assert select_representation("abcdefgh", 5, 0.5) == "abchij"[-5:]
+    assert select_representation("abcdefgh", 5, 0.5) == "abcgh"
 
 
 def test_no_selection_returns_word_unchanged():
