@@ -10,7 +10,7 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -110,3 +110,24 @@ jobs:
             echo "--- results/$file ---"
             cat "results/$file"
           done
+
+      - name: Run hash-function independence experiment
+        run: |
+          python hash_independence_experiment.py \
+            --input dictionaries/words.txt \
+            --output results/hash_independence.csv \
+            --k-min 2 \
+            --k-max 12 \
+            --repetitions 5
+
+      - name: Publish hash-function independence CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-hash-function-independence-results
+          path: results/hash_independence.csv
+          if-no-files-found: error
+
+      - name: Print hash-function independence results
+        run: |
+          echo '--- results/hash_independence.csv ---'
+          cat results/hash_independence.csv
