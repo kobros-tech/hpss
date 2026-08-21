@@ -1,13 +1,4 @@
-"""Evaluate HPSS selection independently of the downstream hash function.
-
-For each k, the same representations are passed to HPSS positional hashing
-and several fixed-width reference hashes. The experiment compares the
-original input (no selection) with the existing HPSS balanced selector and
-keeps selection identical across hash functions.
-
-The collision metrics are exact for the supplied finite dataset. Timing is
-repeated and reported as median seconds and hashes per second.
-"""
+"""Evaluate HPSS selection independently of the downstream hash function."""
 
 from __future__ import annotations
 
@@ -20,13 +11,16 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
-from hpss_hash import REFERENCE_HASHES, SELECTION_STRATEGIES, CompiledEncoder
+from hpss_hash import CompiledEncoder, REFERENCE_HASHES, select_hpss
 from research_datasets import load_english_words
 
-DEFAULT_K_VALUES = tuple(range(2, 13))
 DEFAULT_REPETITIONS = 5
-
 HashFunction = Callable[[bytes], int]
+hpss_encoder = CompiledEncoder()
+
+
+def hpss_positional_bytes(data: bytes) -> int:
+    return hpss_encoder(data.decode("utf-8"))
 
 
 def sha256(data: bytes) -> int:
@@ -38,7 +32,7 @@ def sha3_256(data: bytes) -> int:
 
 
 HASH_FUNCTIONS: dict[str, HashFunction] = {
-    "HPSS_POSITIONAL": CompiledEncoder(),
+    "HPSS_POSITIONAL": hpss_positional_bytes,
     **REFERENCE_HASHES,
     "SHA256": sha256,
     "SHA3_256": sha3_256,
@@ -46,7 +40,7 @@ HASH_FUNCTIONS: dict[str, HashFunction] = {
 
 SELECTIONS: dict[str, Callable[[str, int], str] | None] = {
     "NONE": None,
-    **SELECTION_STRATEGIES,
+    "HPSS": select_hpss,
 }
 
 
@@ -85,18 +79,12 @@ def run(words: list[str], k_values: list[int], repetitions: int) -> list[dict[st
     rows: list[dict[str, object]] = []
     for k in k_values:
         for selection_name, selector in SELECTIONS.items():
-            if selector is None:
-                representations = words
-            else:
-                representations = [selector(word, k) for word in words]
-
+            representations = words if selector is None else [selector(word, k) for word in words]
             representation_stats = collision_stats(representations)
             representation_bytes = [value.encode("utf-8") for value in representations]
 
             for hash_name, hash_fn in HASH_FUNCTIONS.items():
-                hash_stats, seconds, throughput = benchmark_hash(
-                    hash_fn, representation_bytes, repetitions
-                )
+                hash_stats, seconds, throughput = benchmark_hash(hash_fn, representation_bytes, repetitions)
                 rows.append(
                     {
                         "dataset": "dwyl/english-word",
