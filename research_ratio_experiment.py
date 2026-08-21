@@ -121,16 +121,18 @@ def benchmark_allocation(
     throughput_samples = [len(words) / seconds for seconds in timings if seconds > 0]
     throughput = len(words) / median_seconds if median_seconds else float("inf")
     timing_ci_low, timing_ci_high = bootstrap_ci(
-        timings,
-        statistics.median,
-        iterations=bootstrap_iterations,
-        seed=k * 1000 + front,
+        timings, statistics.median, iterations=bootstrap_iterations, seed=k * 1000 + front
     )
     throughput_ci_low, throughput_ci_high = bootstrap_ci(
         throughput_samples,
         statistics.median,
         iterations=bootstrap_iterations,
         seed=10_000 + k * 1000 + front,
+    )
+    timing_iqr = (
+        statistics.quantiles(timings, n=4)[2] - statistics.quantiles(timings, n=4)[0]
+        if len(timings) >= 2
+        else 0.0
     )
 
     return {
@@ -146,10 +148,7 @@ def benchmark_allocation(
         "collision_pairs": collision_pairs,
         "max_group": max_group,
         "median_seconds": median_seconds,
-        "timing_iqr_seconds": statistics.quantiles(timings, n=4)[2]
-        - statistics.quantiles(timings, n=4)[0]
-        if len(timings) >= 2
-        else 0.0,
+        "timing_iqr_seconds": timing_iqr,
         "timing_ci95_low": timing_ci_low,
         "timing_ci95_high": timing_ci_high,
         "throughput_words_per_second": throughput,
@@ -170,15 +169,7 @@ def run(
         if k <= 0:
             continue
         for front in range(k + 1):
-            rows.append(
-                benchmark_allocation(
-                    words,
-                    k,
-                    front,
-                    repeats,
-                    bootstrap_iterations,
-                )
-            )
+            rows.append(benchmark_allocation(words, k, front, repeats, bootstrap_iterations))
     return rows
 
 
@@ -214,12 +205,7 @@ def main() -> None:
     if not words:
         raise SystemExit("input dictionary is empty")
 
-    rows = run(
-        words,
-        list(range(args.k_min, args.k_max + 1)),
-        args.repeats,
-        args.bootstrap_iterations,
-    )
+    rows = run(words, list(range(args.k_min, args.k_max + 1)), args.repeats, args.bootstrap_iterations)
     write_csv(rows, args.output)
     print(f"words={len(words)} allocations={len(rows)} output={args.output}")
 
