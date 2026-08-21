@@ -79,7 +79,7 @@ jobs:
             --output results/ratio_experiment.csv \
             --k-min 2 \
             --k-max 12 \
-            --repeats 7
+            --repeats 15
 
       - name: Analyze ratio allocation experiment
         run: python analyze_ratio_experiment.py results/ratio_experiment.csv --output-dir results
