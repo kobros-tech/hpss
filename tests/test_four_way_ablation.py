@@ -38,3 +38,16 @@ def test_four_way_mapping_is_explicit() -> None:
 
     assert {row["configuration"] for row in rows if row["hash"] == "HPSS_POSITIONAL"} == {"C", "D"}
     assert {row["configuration"] for row in rows if row["hash"] == "XXHASH64"} == {"A", "B"}
+
+
+def test_all_hash_outputs_are_64_bit() -> None:
+    datasets = {"toy": ["alphabet", "almanac", "algebra", "beta", "betamax"]}
+    rows = run(datasets, repetitions=1)
+
+    for row in rows:
+        assert 0 <= row["hash_max_group"] <= len(datasets["toy"])
+
+    for hash_name, hash_fn in ALL_HASHES.items():
+        for text in datasets["toy"]:
+            value = hash_fn(text)
+            assert 0 <= value <= (1 << 64) - 1, hash_name
