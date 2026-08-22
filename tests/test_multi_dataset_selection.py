@@ -47,5 +47,23 @@ def test_balanced_comparison_reports_gap_from_best():
     ]
     comparison = analyze(rows)["balanced_comparison"][0]
     assert comparison["best_unique"] == "90"
+    assert comparison["best_unique_allocations"] == "4+0"
+    assert comparison["best_unique_allocation_count"] == "1"
     assert comparison["unique_gap_from_best"] == 20
+    assert comparison["is_balanced_best_unique"] == "0"
+
+
+def test_balanced_comparison_preserves_tied_best_allocations():
+    rows = [
+        row("toy", 4, 0, 100, 10, 20, 5),
+        row("toy", 4, 1, 100, 10, 20, 5),
+        row("toy", 4, 2, 90, 20, 30, 6),
+        row("toy", 4, 3, 100, 10, 20, 5),
+        row("toy", 4, 4, 80, 30, 40, 7),
+    ]
+    comparison = analyze(rows)["balanced_comparison"][0]
+    assert comparison["best_unique"] == "100"
+    assert comparison["best_unique_allocations"] == "0+4;1+3;3+1"
+    assert comparison["best_unique_allocation_count"] == "3"
+    assert comparison["unique_gap_from_best"] == 10
     assert comparison["is_balanced_best_unique"] == "0"
