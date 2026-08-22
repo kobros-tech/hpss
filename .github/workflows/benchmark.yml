@@ -149,3 +149,21 @@ jobs:
         run: |
           echo '--- results/hpss_hash_experiment.csv ---'
           cat results/hpss_hash_experiment.csv
+
+      - name: Run four-way HPSS ablation
+        run: |
+          python four_way_ablation.py \
+            --output results/four_way_ablation.csv \
+            --repetitions 15
+
+      - name: Publish four-way ablation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-four-way-ablation-results
+          path: results/four_way_ablation.csv
+          if-no-files-found: error
+
+      - name: Print four-way ablation results
+        run: |
+          echo '--- results/four_way_ablation.csv ---'
+          cat results/four_way_ablation.csv
