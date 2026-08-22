@@ -60,17 +60,35 @@ jobs:
       - name: Run multi-dataset allocation ablation
         run: python multi_dataset_allocation_benchmark.py
 
+      - name: Analyze multi-dataset selection
+        run: python analyze_multi_dataset_selection.py MULTI_DATASET_ALLOCATION_ABLATION.csv --output-dir results
+
       - name: Publish multi-dataset results
         uses: actions/upload-artifact@v4
         with:
           name: hpss-multi-dataset-allocation-results
-          path: MULTI_DATASET_ALLOCATION_ABLATION.csv
+          path: |
+            MULTI_DATASET_ALLOCATION_ABLATION.csv
+            results/selection_unique_optima.csv
+            results/selection_collision_entries_optima.csv
+            results/selection_collision_pairs_optima.csv
+            results/selection_max_group_optima.csv
+            results/selection_balanced_comparison.csv
           if-no-files-found: error
 
       - name: Print multi-dataset results
         run: |
           echo '--- MULTI_DATASET_ALLOCATION_ABLATION.csv ---'
           cat MULTI_DATASET_ALLOCATION_ABLATION.csv
+          for file in \
+            selection_unique_optima.csv \
+            selection_collision_entries_optima.csv \
+            selection_collision_pairs_optima.csv \
+            selection_max_group_optima.csv \
+            selection_balanced_comparison.csv; do
+            echo "--- results/$file ---"
+            cat "results/$file"
+          done
 
       - name: Run ratio allocation experiment
         run: |
