@@ -1,4 +1,7 @@
-from hpss_hash_experiment import HASH_FUNCTIONS, collision_stats, make_random_ascii_dataset, run
+from hpss_hash_experiment import HASH_FUNCTIONS, collision_stats, hpss_positional_hash, make_random_ascii_dataset, run
+
+
+MASK64 = (1 << 64) - 1
 
 
 def test_hash_function_families():
@@ -35,7 +38,12 @@ def test_run_evaluates_original_input_without_selection():
     assert all(row["timing_repetitions"] == 1 for row in rows)
 
 
-def test_hpss_positional_is_injective_for_toy_input():
+def test_hpss_positional_is_64_bit():
+    values = [hpss_positional_hash("a" * length) for length in range(1, 100)]
+    assert all(0 <= value <= MASK64 for value in values)
+
+
+def test_hpss_positional_has_no_collision_on_toy_input():
     rows = run({"toy": ["alpha", "alpine", "beta"]}, repetitions=1)
     hpss = next(row for row in rows if row["hash"] == "HPSS_POSITIONAL")
     assert hpss["collision_entries"] == 0
