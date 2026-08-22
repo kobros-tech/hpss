@@ -3,6 +3,10 @@
 Every hash function receives the original normalized input directly. This
 isolates the contribution of the proposed HPSS positional hash from the
 selection layer evaluated in PRs #10-#12.
+
+For this standalone comparison, every hash function produces a fixed-width
+64-bit value. HPSS uses the low 64 bits of its positional encoding so that
+its collision space is comparable with the 64-bit reference hashes.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
-from hpss_hash import CompiledEncoder, REFERENCE_HASHES
+from hpss_hash import CompiledEncoder, MASK64, REFERENCE_HASHES
 from research_datasets import load_english_words, load_estonian_domains
 
 DEFAULT_REPETITIONS = 15
@@ -26,25 +30,39 @@ RANDOM_SEED = 0
 RANDOM_COUNT = 50_000
 RANDOM_LENGTH = 12
 
-HashFunction = Callable[[bytes], int]
+HashFunction = Callable[[str], int]
 hpss_encoder = CompiledEncoder()
 
 
-def hpss_positional_hash(data: bytes) -> int:
-    return hpss_encoder(data.decode("utf-8"))
+def hpss_positional_hash(text: str) -> int:
+    return hpss_encoder(text) & MASK64
 
 
-def sha256(data: bytes) -> int:
-    return int.from_bytes(hashlib.sha256(data).digest(), "big")
+def fnv1a64(text: str) -> int:
+    return REFERENCE_HASHES["FNV1A64"](text.encode("utf-8"))
 
 
-def sha3_256(data: bytes) -> int:
-    return int.from_bytes(hashlib.sha3_256(data).digest(), "big")
+def murmur3_64(text: str) -> int:
+    return REFERENCE_HASHES["MURMUR3_64"](text.encode("utf-8"))
+
+
+def xxhash64(text: str) -> int:
+    return REFERENCE_HASHES["XXHASH64"](text.encode("utf-8"))
+
+
+def sha256(text: str) -> int:
+    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest(), "big")
+
+
+def sha3_256(text: str) -> int:
+    return int.from_bytes(hashlib.sha3_256(text.encode("utf-8")).digest(), "big")
 
 
 HASH_FUNCTIONS: dict[str, HashFunction] = {
     "HPSS_POSITIONAL": hpss_positional_hash,
-    **REFERENCE_HASHES,
+    "FNV1A64": fnv1a64,
+    "MURMUR3_64": murmur3_64,
+    "XXHASH64": xxhash64,
     "SHA256": sha256,
     "SHA3_256": sha3_256,
 }
@@ -82,7 +100,7 @@ def collision_stats(values: list[int]) -> dict[str, int | float]:
 
 def benchmark_hash(
     hash_fn: HashFunction,
-    values: list[bytes],
+    values: list[str],
     repetitions: int,
 ) -> tuple[dict[str, int | float], float, float, float]:
     timings: list[float] = []
@@ -111,9 +129,8 @@ def run(
 
     rows: list[dict[str, object]] = []
     for dataset_name, records in datasets.items():
-        values = [record.encode("utf-8") for record in records]
         for hash_name, hash_fn in HASH_FUNCTIONS.items():
-            stats, seconds, iqr, throughput = benchmark_hash(hash_fn, values, repetitions)
+            stats, seconds, iqr, throughput = benchmark_hash(hash_fn, records, repetitions)
             rows.append(
                 {
                     "dataset": dataset_name,
