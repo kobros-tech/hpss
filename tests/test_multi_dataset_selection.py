@@ -19,8 +19,9 @@ def row(dataset: str, k: int, front: int, unique: int, entries: int, pairs: int,
     }
 
 
-def test_alpha_interval_covers_boundary_allocations():
+def test_alpha_interval_uses_half_up_boundaries():
     assert alpha_interval(0, 4) == (0.0, 0.125)
+    assert alpha_interval(1, 4) == (0.125, 0.375)
     assert alpha_interval(4, 4) == (0.875, 1.0)
 
 
@@ -34,6 +35,7 @@ def test_analysis_selects_metric_specific_allocations():
 
     assert outputs["unique_optima"][0]["front"] == "4"
     assert outputs["collision_entries_optima"][0]["front"] == "4"
+    assert outputs["collision_pairs_optima"][0]["front"] == "0"
     assert outputs["max_group_optima"][0]["front"] == "0"
 
 
