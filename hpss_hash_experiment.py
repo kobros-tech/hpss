@@ -5,8 +5,8 @@ isolates the contribution of the proposed HPSS positional hash from the
 selection layer evaluated in PRs #10-#12.
 
 For this standalone comparison, every hash function produces a fixed-width
-64-bit value. HPSS uses the low 64 bits of its positional encoding so that
-its collision space is comparable with the 64-bit reference hashes.
+64-bit value. HPSS and the cryptographic references use their low 64 bits so
+the collision spaces are comparable with the 64-bit reference hashes.
 """
 
 from __future__ import annotations
@@ -51,11 +51,11 @@ def xxhash64(text: str) -> int:
 
 
 def sha256(text: str) -> int:
-    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest(), "big")
+    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[-8:], "big")
 
 
 def sha3_256(text: str) -> int:
-    return int.from_bytes(hashlib.sha3_256(text.encode("utf-8")).digest(), "big")
+    return int.from_bytes(hashlib.sha3_256(text.encode("utf-8")).digest()[-8:], "big")
 
 
 HASH_FUNCTIONS: dict[str, HashFunction] = {
