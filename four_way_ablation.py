@@ -7,9 +7,9 @@ B. HPSS selection -> standard hash
 C. original input -> HPSS Hash
 D. HPSS selection -> HPSS Hash
 
-Input normalization is performed once outside the timed section. The timed
-pipeline therefore measures hashing alone for A/C and selection + hashing for
-B/D. All hash outputs are constrained to 64 bits.
+Input normalization is performed once outside the timed section. For A/C the
+timed pipeline is hashing only; for B/D it is selection + hashing. All hash
+outputs are constrained to 64 bits.
 """
 
 from __future__ import annotations
@@ -17,9 +17,10 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import random
 import statistics
+import string
 import time
-from collections import Counter
 from pathlib import Path
 from typing import Callable
 
@@ -73,6 +74,9 @@ def benchmark_pipeline(
 ) -> tuple[dict[str, int | float], dict[str, int | float], float, float, float]:
     """Benchmark one selection/hash configuration."""
     hash_fn = ALL_HASHES[hash_name]
+
+    # Materialize once for collision statistics. This is intentionally outside
+    # the timed loop; timing below measures the actual pipeline repeatedly.
     representations = [select_hpss(value, k) for value in records] if selection else records
     representation_stats = collision_stats(representations)
 
@@ -80,7 +84,11 @@ def benchmark_pipeline(
     hashed: list[int] = []
     for _ in range(repetitions):
         start = time.perf_counter_ns()
-        hashed = [hash_fn(value) for value in representations]
+        if selection:
+            selected = [select_hpss(value, k) for value in records]
+            hashed = [hash_fn(value) for value in selected]
+        else:
+            hashed = [hash_fn(value) for value in records]
         timings.append((time.perf_counter_ns() - start) / 1e9)
 
     median_seconds = statistics.median(timings)
@@ -109,19 +117,13 @@ def run(
         for k in K_VALUES:
             for hash_name in ALL_HASHES:
                 for selection in (False, True):
-                    effective_hash = hash_name
-                    # HPSS_POSITIONAL is the HPSS Hash contribution; standard
-                    # hashes are the comparison family. The selection flag is
-                    # still recorded for the four-way ablation.
                     (
                         representation_stats,
                         hash_stats,
                         seconds,
                         iqr,
                         throughput,
-                    ) = benchmark_pipeline(
-                        records, k, effective_hash, selection, repetitions
-                    )
+                    ) = benchmark_pipeline(records, k, hash_name, selection, repetitions)
                     configuration = (
                         "D" if selection and hash_name == "HPSS_POSITIONAL"
                         else "C" if not selection and hash_name == "HPSS_POSITIONAL"
@@ -166,6 +168,16 @@ def write_csv(rows: list[dict[str, object]], output: Path) -> None:
         writer.writerows(rows)
 
 
+def make_random_ascii_dataset(count: int = 50_000, length: int = 12, seed: int = 0) -> list[str]:
+    """Generate a reproducible dataset of unique random ASCII strings."""
+    rng = random.Random(seed)
+    alphabet = string.ascii_lowercase + string.digits
+    values: set[str] = set()
+    while len(values) < count:
+        values.add("".join(rng.choices(alphabet, k=length)))
+    return sorted(values)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--english", type=Path, default=Path("dictionaries/words.txt"))
@@ -179,23 +191,11 @@ def main() -> None:
     datasets = {
         "english_words": load_english_words(args.english),
         "estonian_domains": load_estonian_domains(args.estonian),
-        "random_ascii": _random_ascii_dataset(),
+        "random_ascii": make_random_ascii_dataset(),
     }
     rows = run(datasets, args.repetitions)
     write_csv(rows, args.output)
     print(f"rows={len(rows)} output={args.output}")
-
-
-def _random_ascii_dataset(count: int = 50_000, length: int = 12, seed: int = 0) -> list[str]:
-    import random
-    import string
-
-    rng = random.Random(seed)
-    alphabet = string.ascii_lowercase + string.digits
-    values: set[str] = set()
-    while len(values) < count:
-        values.add("".join(rng.choices(alphabet, k=length)))
-    return sorted(values)
 
 
 if __name__ == "__main__":
