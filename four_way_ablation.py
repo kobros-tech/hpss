@@ -54,6 +54,11 @@ def sha3_256_64(text: str) -> int:
     return int.from_bytes(hashlib.sha3_256(text.encode("utf-8")).digest()[-8:], "big")
 
 
+def hpss_positional_hash64(text: str) -> int:
+    """Encode with HPSS positional hashing and retain the low 64 bits."""
+    return hpss_positional_hash(text) & MASK64
+
+
 STANDARD_HASHES: dict[str, HashFunction] = {
     "FNV1A64": fnv1a64,
     "MURMUR3_64": murmur3_64,
@@ -62,7 +67,7 @@ STANDARD_HASHES: dict[str, HashFunction] = {
     "SHA3_256": sha3_256_64,
 }
 
-ALL_HASHES = {**STANDARD_HASHES, "HPSS_POSITIONAL": hpss_positional_hash}
+ALL_HASHES = {**STANDARD_HASHES, "HPSS_POSITIONAL": hpss_positional_hash64}
 
 
 def benchmark_pipeline(
