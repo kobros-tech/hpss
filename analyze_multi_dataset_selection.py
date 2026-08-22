@@ -75,13 +75,17 @@ def analyze(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
 
         balanced_front = k // 2
         balanced = next(row for row in group if int(row["front"]) == balanced_front)
-        best = choose(group, "unique", True)[0]
+        best_rows = choose(group, "unique", True)
+        best_unique = int(best_rows[0]["unique"])
+        best_allocations = ";".join(
+            f"{row['front']}+{row['back']}" for row in best_rows
+        )
         comparison = enrich(balanced)
-        comparison["best_unique_front"] = best["front"]
-        comparison["best_unique_back"] = best["back"]
-        comparison["best_unique"] = best["unique"]
-        comparison["unique_gap_from_best"] = int(best["unique"]) - int(balanced["unique"])
-        comparison["is_balanced_best_unique"] = str(int(balanced["unique"] == int(best["unique"])))
+        comparison["best_unique_allocations"] = best_allocations
+        comparison["best_unique_allocation_count"] = str(len(best_rows))
+        comparison["best_unique"] = str(best_unique)
+        comparison["unique_gap_from_best"] = best_unique - int(balanced["unique"])
+        comparison["is_balanced_best_unique"] = str(int(balanced["unique"] == best_unique))
         outputs["balanced_comparison"].append(comparison)
 
     return outputs
