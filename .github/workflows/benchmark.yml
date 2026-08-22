@@ -131,3 +131,21 @@ jobs:
         run: |
           echo '--- results/hash_independence.csv ---'
           cat results/hash_independence.csv
+
+      - name: Run independent HPSS hash experiment
+        run: |
+          python hpss_hash_experiment.py \
+            --output results/hpss_hash_experiment.csv \
+            --repetitions 15
+
+      - name: Publish independent HPSS hash results
+        uses: actions/upload-artifact@v4
+        with:
+          name: hpss-independent-hash-results
+          path: results/hpss_hash_experiment.csv
+          if-no-files-found: error
+
+      - name: Print independent HPSS hash results
+        run: |
+          echo '--- results/hpss_hash_experiment.csv ---'
+          cat results/hpss_hash_experiment.csv
