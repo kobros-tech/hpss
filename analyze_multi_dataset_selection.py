@@ -1,6 +1,6 @@
 """Analyze front/back selection allocations across all research datasets.
 
-The allocation itself is the experimental unit.  ``alpha = front / k`` is
+The allocation itself is the experimental unit. ``alpha = front / k`` is
 reported as a convenient ratio representation; the analysis never treats
 alpha as a continuous variable because only k + 1 discrete allocations exist
 for a fixed k.
@@ -20,10 +20,17 @@ def read_rows(path: Path) -> list[dict[str, str]]:
 
 
 def alpha_interval(front: int, k: int) -> tuple[float, float]:
-    """Return the half-up rounding interval for an allocation."""
+    """Return the half-up rounding interval for an allocation.
+
+    The interval is ``[low, high)`` except that the final allocation is closed
+    at 1.0. At an exact half-way point, half-up rounding assigns the value to
+    the larger allocation.
+    """
     if k <= 0 or not 0 <= front <= k:
         raise ValueError("invalid allocation")
-    return max(0.0, (front - 0.5) / k), min(1.0, (front + 0.5) / k)
+    low = max(0.0, (front - 0.5) / k)
+    high = min(1.0, (front + 0.5) / k)
+    return low, high
 
 
 def choose(group: list[dict[str, str]], metric: str, maximize: bool) -> list[dict[str, str]]:
